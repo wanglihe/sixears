@@ -1,0 +1,21 @@
+#!/usr/bin/env escript
+
+%%! -smp disable
+
+%%escript在main退出后就自动退出了，这一点和erl不一样，需注意。
+%%所以要想script不退出，只要不退出main就行了。
+main(_) ->
+    io:format("Welcome to the sixears test tool~n"),
+    process_cmd().
+
+process_cmd() ->
+    CMD = io:get_chars("",1),
+    case CMD of
+        eof ->
+            ok;
+        [$\n] ->
+            process_cmd();
+        _ ->
+            io:format("get cmd ~p~n", [CMD]),
+            process_cmd()
+    end.
