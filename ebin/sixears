@@ -6,7 +6,12 @@
 %%所以要想script不退出，只要不退出main就行了。
 main(_) ->
     io:format("Welcome to the sixears test tool~n"),
-    process_cmd().
+    case application:start(sixears) of
+        ok ->
+            process_cmd();
+        {error, Reason} ->
+            io:format("application get error ~p~n", [Reason])
+    end.
 
 process_cmd() ->
     CMD = io:get_chars("",1),
