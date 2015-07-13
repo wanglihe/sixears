@@ -10,7 +10,9 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-    sixears_sup:start_link().
+    ScriptName = os:getenv("scriptname"),
+    io:format("ScriptName is: ~p~n", [ScriptName]),
+    sixears_sup:start_link(ScriptName).
 
 stop(_State) ->
     ok.

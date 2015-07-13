@@ -11,7 +11,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0]).
+-export([start_link/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -32,8 +32,8 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
-start_link() ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+start_link(ScriptName) ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [ScriptName], []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -50,8 +50,8 @@ start_link() ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([]) ->
-    io:format("core dispatch started~n"),
+init([ScriptName]) ->
+    io:format("core dispatch started with: ~p~n", [ScriptName]),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
