@@ -52,7 +52,13 @@ start_link(ScriptName) ->
 %%--------------------------------------------------------------------
 init([ScriptName]) ->
     io:format("core dispatch started with: ~p~n", [ScriptName]),
-    {ok, #state{}}.
+    case file:consult(ScriptName) of
+        {ok, _Script} ->
+            {ok, #state{}};
+        {error, Reason} ->
+            io:format("load script get error ~p~n", [Reason]),
+            {stop, Reason}
+    end.
 
 %%--------------------------------------------------------------------
 %% @private
