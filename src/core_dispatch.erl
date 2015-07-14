@@ -18,8 +18,12 @@
          terminate/2, code_change/3]).
 
 -define(SERVER, ?MODULE).
+-define(CONFPORT, 5060).
+-define(CLIENTPORT, 5061).
 
--record(state, {}).
+-record(state, { conf_port
+               , client_port
+               , script}).
 
 %%%===================================================================
 %%% API
@@ -53,8 +57,12 @@ start_link(ScriptName) ->
 init([ScriptName]) ->
     io:format("core dispatch started with: ~p~n", [ScriptName]),
     case file:consult(ScriptName) of
-        {ok, _Script} ->
-            {ok, #state{}};
+        {ok, Script} ->
+            [Server|RealScript] = Script,
+            {ConfPort, ClientPort} = init_server(Server),
+            {ok, #state{ conf_port = ConfPort
+                       , client_port = ClientPort
+                       , script = RealScript }};
         {error, Reason} ->
             io:format("load script get error ~p~n", [Reason]),
             {stop, Reason}
@@ -132,3 +140,10 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+init_server({server, Conf, Client}) ->
+    {init_port(?CONFPORT, Conf), init_port(?CLIENTPORT, Client)}.
+
+init_port(LocalPort, {_, Addr, Port}) ->
+    {ok, Socket} = gen_udp:open(LocalPort),
+    ok = gen_udp:connect(Socket, Addr, Port),
+    Socket.
