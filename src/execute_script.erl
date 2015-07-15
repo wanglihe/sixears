@@ -4,27 +4,25 @@
 %%% @doc
 %%%
 %%% @end
-%%% Created : 10 Jul 2015 by wanglihe <wanglihe.programmer@gmail.com>
+%%% Created : 15 Jul 2015 by wanglihe <wanglihe.programmer@gmail.com>
 %%%-------------------------------------------------------------------
--module(core_dispatch).
+-module(execute_script).
 
 -behaviour(gen_server).
 
 %% API
--export([start_link/1]).
+-export([start_link/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
 -define(SERVER, ?MODULE).
--define(CONFPORT, 5060).
--define(CLIENTPORT, 5061).
 
--record(state, { conf_port
-               , client_port
-               , script
-               , callid = 10000}).
+-record(state, { script
+               , callid
+               , script_step
+               , sip_step}).
 
 %%%===================================================================
 %%% API
@@ -37,8 +35,8 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
-start_link(ScriptName) ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [ScriptName], []).
+start_link(Script, CallId) ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [Script, CallId], []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -55,22 +53,12 @@ start_link(ScriptName) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([ScriptName]) ->
-    process_flag(trap_exit, true),
-    io:format("core dispatch started with: ~p~n", [ScriptName]),
-    case file:consult(ScriptName) of
-        {ok, Script} ->
-            [Server|RealScript] = Script,
-            {ConfPort, ClientPort} = init_server(Server),
-            gen_server:cast(self(), {start}), %%启动相关参数加在这里，
-                                                 %%如每秒新发，最大并发
-            {ok, #state{ conf_port = ConfPort
-                       , client_port = ClientPort
-                       , script = RealScript }};
-        {error, Reason} ->
-            io:format("load script get error ~p~n", [Reason]),
-            {stop, Reason}
-    end.
+init([Script, CallId]) ->
+    gen_server:cast(self(), self_start),
+    {ok, #state{ script = Script
+               , callid = CallId
+               , script_step = start
+               , sip_step = none}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -100,18 +88,9 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_cast({start}, State) ->
-    Script = State#state.script,
-    CallId = State#state.callid,
-    case execute_script:start_link(Script, CallId) of
-        {ok, Pid} ->
-            put(Pid, CallId),
-            put(CallId, Pid);
-        {error, _Reason} ->
-            ok
-    end,
-    {noreply, State#state{ callid = CallId + 1}};
-
+handle_cast(self_start, State) ->
+    io:format("script run over~n"),
+    {stop, normal, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -125,11 +104,6 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info({'EXIT', Pid, _}, State) ->
-    CallId = erase(Pid),
-    erase(CallId),
-    io:format("earse complete~n"),
-    {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -161,10 +135,3 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-init_server({server, Conf, Client}) ->
-    {init_port(?CONFPORT, Conf), init_port(?CLIENTPORT, Client)}.
-
-init_port(LocalPort, {_, Addr, Port}) ->
-    {ok, Socket} = gen_udp:open(LocalPort),
-    ok = gen_udp:connect(Socket, Addr, Port),
-    Socket.
