@@ -23,6 +23,7 @@
 
 -record(state, { conf_port
                , client_port
+               , server
                , script
                , callid = 10000}).
 
@@ -66,6 +67,7 @@ init([ScriptName]) ->
                                                  %%如每秒新发，最大并发
             {ok, #state{ conf_port = ConfPort
                        , client_port = ClientPort
+                       , server = Server
                        , script = RealScript }};
         {error, Reason} ->
             io:format("load script get error ~p~n", [Reason]),
@@ -101,9 +103,10 @@ handle_call(_Request, _From, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_cast({start}, State) ->
-    Script = State#state.script,
-    CallId = State#state.callid,
-    case execute_script:start_link(Script, CallId) of
+    #state{ script = Script
+          , server = Server
+          , callid = CallId} = State,
+    case execute_script:start_link(Script, Server, CallId) of
         {ok, Pid} ->
             put(Pid, CallId),
             put(CallId, Pid);
@@ -128,7 +131,7 @@ handle_cast(_Msg, State) ->
 handle_info({'EXIT', Pid, _}, State) ->
     CallId = erase(Pid),
     erase(CallId),
-    io:format("earse complete~n"),
+    io:format("erase complete~n"),
     {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.

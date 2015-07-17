@@ -25,5 +25,6 @@ start_link(ScriptName) ->
 
 init([ScriptName]) ->
     CoreDispatch = ?CHILD(core_dispatch, worker, [ScriptName]),
-    {ok, { {one_for_one, 5, 10}, [CoreDispatch]} }.
+    ESip = ?CHILD(esip, worker, []),
+    {ok, { {one_for_one, 5, 10}, [ESip, CoreDispatch]} }.
 

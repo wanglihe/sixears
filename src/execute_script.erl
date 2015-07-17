@@ -11,7 +11,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/2]).
+-export([start_link/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -19,7 +19,10 @@
 
 -define(SERVER, ?MODULE).
 
+-include_lib("p1_sip/include/esip.hrl").
+
 -record(state, { script
+               , server
                , callid
                , script_step
                , sip_step}).
@@ -35,8 +38,8 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
-start_link(Script, CallId) ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [Script, CallId], []).
+start_link(Script, Server, CallId) ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [Script, Server, CallId], []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -53,9 +56,10 @@ start_link(Script, CallId) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([Script, CallId]) ->
+init([Script, Server, CallId]) ->
     gen_server:cast(self(), self_start),
     {ok, #state{ script = Script
+               , server = Server
                , callid = CallId
                , script_step = start
                , sip_step = none}}.
@@ -89,6 +93,10 @@ handle_call(_Request, _From, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_cast(self_start, State) ->
+    #state{ server = Server} = State,
+    {server, {conf, ConfHost, ConfPort}, {client, ClientHost, ClientPort}} = Server,
+    io:format("gen conf invite: ~p~n", [list_to_binary(gen_invite({ConfHost, ConfPort}, {"localhost.local", 5060}, <<>>))]),
+    io:format("gen client invite: ~p~n", [list_to_binary(gen_invite({ClientHost, ClientPort}, {"localhost.local", 5060}, <<>>))]),
     io:format("script run over~n"),
     {stop, normal, State};
 handle_cast(_Msg, State) ->
@@ -135,3 +143,33 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+gen_invite(ToHostPort, FromHostPort, Body) ->
+    Invite = #sip{ type = request
+                 , method = <<"INVITE">>
+                 , uri = gen_uri("sip", "service", ToHostPort)
+                 , hdrs = [ {via, [gen_via(FromHostPort)]}
+                          , {from, {<<"sixears">>, gen_uri("sip", "sixears", FromHostPort),[{<<"tag">>, esip:make_tag()}]}}
+                          , {to, {<<"service">>, gen_uri("sip", "service", ToHostPort), []}}
+                          , {'call-id', esip:make_callid()}
+                          , {cseq, 1}
+                          , {contact, [{<<>>, gen_uri("sip", "service", ToHostPort), []}]}
+                          , {'max-forwards', 70}
+                          , {subject, <<"Conference Test">>}
+                          , {'content-type', {<<"application/sdp">>, []}}
+                          , {'content-length', 0}]
+                 , body = Body
+              },
+    esip:encode(Invite).
+
+gen_uri(Scheme, User, {Host, Port}) ->
+    #uri{ scheme = list_to_binary(Scheme)
+        , user = list_to_binary(User)
+        , host = list_to_binary(Host)
+        , port = Port}.
+
+gen_via({FromHost, FromPort}) ->
+    #via{ transport = <<"UDP">>
+        , host = list_to_binary(FromHost)
+        , port = FromPort
+        , params = [{<<"branch">>, esip:make_branch()}]}.
