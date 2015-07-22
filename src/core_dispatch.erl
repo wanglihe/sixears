@@ -123,11 +123,13 @@ handle_cast({start}, State) ->
     {noreply, State#state{ callid = CallIdNum + 1}};
 handle_cast({confserver, Msg}, State) ->
     #state{conf_port = Socket} = State,
+    io:format("conf ---------------------->~p~n", [Msg]),
     gen_udp:send(Socket, Msg),
     {noreply, State};
 
 handle_cast({clientserver, Msg}, State) ->
     #state{client_port = Socket} = State,
+    io:format("client =====================>~p~n", [Msg]),
     gen_udp:send(Socket, Msg),
     {noreply, State};
 
@@ -152,12 +154,14 @@ handle_info({'EXIT', Pid, _}, State) ->
     {noreply, State};
 handle_info({udp, Port, _A, _P , Msg}, #state{conf_port = Port} = State) ->
     {ok, Sip} = esip:decode(Msg),
+    io:format("conf <------------------~p~n", [Sip]),
     CallId = find_callid(Sip),
     Pid = get(CallId),
     gen_server:cast(Pid, {confserver, Sip}),
     {noreply, State};
 handle_info({udp, Port, _A, _P , Msg}, #state{client_port = Port} = State) ->
     {ok, Sip} = esip:decode(Msg),
+    io:format("client <================= ~p~n", [Sip]),
     CallId = find_callid(Sip),
     Pid = get(CallId),
     gen_server:cast(Pid, {clientserver, Sip}),
