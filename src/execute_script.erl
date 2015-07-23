@@ -117,28 +117,12 @@ handle_cast(self_start, State) ->
 handle_cast(init_complete, #state{ sess_num = Num
                                  , sess_init_num = InitNum} = State) when Num > InitNum + 1->
     {noreply, State#state{sess_init_num = InitNum + 1}};
+
 handle_cast(init_complete, #state{ sess_num = Num
                                  , sess_init_num = InitNum
                                  , script = Script} = State) when Num =:= InitNum + 1->
-    case Script of
-        [] ->
-            {stop, normal, State};
-        [Command|RestCommand] ->
-            case Command of
-                {destroy, session, _} ->
-                    %% now only support destroy all
-                    Sessions = State#state.sessions,
-                    lists:foreach(fun(S) ->
-                                          gen_server:cast(S, destroy)
-                                  end, Sessions),
-                    {noreply, State#state{script = RestCommand}};
-                _ ->
-                    {noreply, State#state{script = RestCommand}}
-            end;
-        _ ->
-            io:format("bad script? ~p~n", [Script]),
-            {stop, normal, State}
-    end;
+    io:format("init complete goto ~p~n", [Script]),
+    run_script(Script, State);
 
 handle_cast(Msg, State) ->
     io:format("~p get unknow cast ~p~n", [?MODULE, Msg]),
@@ -164,6 +148,11 @@ handle_info({'EXIT', Pid, _}, State) ->
         NSessNum ->
             {noreply, State#state{sess_num = NSessNum}}
     end;
+
+handle_info(timeout, #state{script = Script} = State) ->
+    io:format("after pause~n"),
+    run_script(Script, State);
+
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -195,3 +184,32 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+run_script(Script, State) ->
+    case Script of
+        [] ->
+            {stop, normal, State};
+        [Command|RestCommand] ->
+            case Command of
+                {destroy, session, _} ->
+                    %% now only support destroy all
+                    Sessions = State#state.sessions,
+                    lists:foreach(fun(S) ->
+                                          gen_server:cast(S, destroy)
+                                  end, Sessions),
+                    {noreply, State#state{script = RestCommand}};
+                {Server, Sess, Comm} when Server =:= confserver
+                                        ; Server =:= clientserver ->
+                    Pid = get(Sess),
+                    io:format("send ~p to ~p~n", [{Server, Comm}, Pid]),
+                    gen_server:cast(Pid, {Server, Comm}),
+                    run_script(RestCommand, State);
+                {pause, Timeout} ->
+                    {noreply, State#state{script = RestCommand}, Timeout};
+                _ ->
+                    io:format("unknow comm ~p~n", [Command]),
+                    run_script(RestCommand, State)
+            end;
+        _ ->
+            io:format("bad script? ~p~n", [Script]),
+            {stop, normal, State}
+    end.

@@ -100,7 +100,7 @@ handle_cast(self_start, State) ->
     ConfInvite = gen_invite(CallId, {ConfHost, ConfPort}, {"the3pcc.loacal", 5060}, <<>>),
     gen_server:cast(core_dispatch, {confserver, esip:encode(ConfInvite)}),
     {noreply, State#state{step = wait_conf_invite}};
-handle_cast({confserver, Sip}, #state{step = wait_conf_invite} = State) ->
+handle_cast({confserver, #sip{} = Sip}, #state{step = wait_conf_invite} = State) ->
     #sip{body = Sdp} = Sip,
     #state{ server = Server
           , callid = CallId} = State,
@@ -109,7 +109,7 @@ handle_cast({confserver, Sip}, #state{step = wait_conf_invite} = State) ->
     gen_server:cast(core_dispatch, {clientserver, esip:encode(ClientInvite)}),
     {noreply, State#state{ step = wait_client_invite
                          , conf_inv200 = Sip}};
-handle_cast({clientserver, Sip}, #state{step = wait_client_invite} = State) ->
+handle_cast({clientserver, #sip{} = Sip}, #state{step = wait_client_invite} = State) ->
     #state{ server = Server
           , conf_inv200 = Conf200} = State,
     {server, {conf, ConfHost, ConfPort}, {client, ClientHost, ClientPort}} = Server,
@@ -133,10 +133,19 @@ handle_cast(destroy, State) ->
     ClientBye = gen_bye({ClientHost, ClientPort}, {"the3pcc.local", 5061}, Client200),
     gen_server:cast(core_dispatch, {clientserver, esip:encode(ClientBye)}),
     {noreply, State#state{step = wait_bye}};
-handle_cast({_S, _Sip}, State) when State#state.step =:= wait_bye ->
+
+handle_cast({_S, #sip{} = _Sip}, State) when State#state.step =:= wait_bye ->
     {noreply, State#state{step = wait_bye_1}};
-handle_cast({_S, _Sip}, State) when State#state.step =:= wait_bye_1 ->
+handle_cast({_S, #sip{} = _Sip}, State) when State#state.step =:= wait_bye_1 ->
     {stop, normal, State};
+
+handle_cast({clientserver, Comm}, State) ->
+    io:format("clientserver goes ~p~n", [Comm]),
+    {noreply, State};
+handle_cast({confserver, Comm}, State) ->
+    io:format("confserver goes ~p~n", [Comm]),
+    {noreply, State};
+
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
