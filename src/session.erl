@@ -11,15 +11,21 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0]).
+-export([start_link/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
+-include_lib("p1_sip/include/esip.hrl").
+
 -define(SERVER, ?MODULE).
 
--record(state, {}).
+-record(state, { server
+               , callid
+               , conf_inv200
+               , client_inv200
+               , step}).
 
 %%%===================================================================
 %%% API
@@ -32,8 +38,8 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
-start_link() ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+start_link(Server) ->
+    gen_server:start_link(?MODULE, [Server], []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -50,8 +56,12 @@ start_link() ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([]) ->
-    {ok, #state{}}.
+init([Server]) ->
+    CallId = gen_server:call(core_dispatch, callid),
+    io:format("session ~p get callid ~p~n", [self(), CallId]),
+    gen_server:cast(self(), self_start),
+    {ok, #state{ server = Server
+               , callid = CallId}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -81,6 +91,38 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_cast(self_start, State) ->
+    #state{ server = Server
+          , callid = CallId} = State,
+    {server, {conf, ConfHost, ConfPort}, _} = Server,
+    ConfInvite = gen_invite(CallId, {ConfHost, ConfPort}, {"the3pcc.loacal", 5060}, <<>>),
+    gen_server:cast(core_dispatch, {confserver, esip:encode(ConfInvite)}),
+    {noreply, State#state{step = wait_conf_invite}};
+handle_cast({confserver, Sip}, #state{step = wait_conf_invite} = State) ->
+    #sip{body = Sdp} = Sip,
+    #state{ server = Server
+          , callid = CallId} = State,
+    {server, _, {client, ClientHost, ClientPort}} = Server,
+    ClientInvite = gen_invite(CallId, {ClientHost, ClientPort}, {"the3pcc.local", 5061}, Sdp),
+    gen_server:cast(core_dispatch, {clientserver, esip:encode(ClientInvite)}),
+    {noreply, State#state{ step = wait_client_invite
+                         , conf_inv200 = Sip}};
+handle_cast({clientserver, Sip}, #state{step = wait_client_invite} = State) ->
+    #state{ server = Server
+          , conf_inv200 = Conf200} = State,
+    {server, {conf, ConfHost, ConfPort}, {client, ClientHost, ClientPort}} = Server,
+    #sip{body = Sdp} = Sip,
+    ConfAck = gen_ack({ConfHost, ConfPort}, {"the3pcc.local", 5060}, Conf200, Sdp),
+    gen_server:cast(core_dispatch, {confserver, esip:encode(ConfAck)}),
+    ClientAck = gen_ack({ClientHost, ClientPort}, {"the3pcc.local", 5060}, Sip, <<>>),
+    gen_server:cast(core_dispatch, {clientserver, esip:encode(ClientAck)}),
+
+    ConfBye = gen_bye({ConfHost, ConfPort}, {"the3pcc.local", 5060}, Conf200),
+    gen_server:cast(core_dispatch, {confserver, esip:encode(ConfBye)}),
+    ClientBye = gen_bye({ClientHost, ClientPort}, {"the3pcc.local", 5061}, Sip),
+    gen_server:cast(core_dispatch, {clientserver, esip:encode(ClientBye)}),
+
+    {stop, normal, State#state{client_inv200 = Sip}};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -125,3 +167,61 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+gen_invite(CallId, ToHostPort, FromHostPort, Body) ->
+    #sip{ type = request
+        , method = <<"INVITE">>
+        , uri = gen_uri("sip", "service", ToHostPort)
+        , hdrs = [ {via, [gen_via(FromHostPort)]}
+                 , {from, {<<"sixears">>, gen_uri("sip", "sixears", FromHostPort),[{<<"tag">>, esip:make_tag()}]}}
+                 , {to, {<<"service">>, gen_uri("sip", "service", ToHostPort), []}}
+                 , {'call-id', CallId}
+                 , {cseq, 1}
+                 , {contact, [{<<>>, gen_uri("sip", "service", FromHostPort), []}]}
+                 , {'max-forwards', 70}
+                 , {subject, <<"Conference Test">>}
+                 , {'content-type', {<<"application/sdp">>, []}}
+                 , {'content-length', 0}]
+        , body = Body
+    }.
+
+gen_uri(Scheme, User, {Host, Port}) ->
+    #uri{ scheme = list_to_binary(Scheme)
+        , user = list_to_binary(User)
+        , host = list_to_binary(Host)
+        , port = Port}.
+
+gen_via({FromHost, FromPort}) ->
+    #via{ transport = <<"UDP">>
+        , host = list_to_binary(FromHost)
+        , port = FromPort
+        , params = [{<<"branch">>, esip:make_branch()}]}.
+gen_ack(ToHostPort, FromHostPort, Sip, Body) ->
+    Header = esip:filter_hdrs([ 'from'
+                              , 'to'
+                              , 'call-id'
+                              , 'max-forwards'
+                              , 'subject'
+                              , 'content-type'
+                              , 'content-length'], Sip#sip.hdrs),
+    Sip#sip{ type = request
+           , method = <<"ACK">>
+           , uri = gen_uri("sip", "service", ToHostPort)
+           , hdrs = [ {contact, [{<<>>, gen_uri("sip", "service", FromHostPort), []}]}
+                    , {via, [gen_via(FromHostPort)]}
+                    , {cseq, 2} |Header]
+           , body = Body}.
+
+gen_bye(ToHostPort, FromHostPort, Sip) ->
+    Header = esip:filter_hdrs([ 'from'
+                              , 'to'
+                              , 'call-id'
+                              , 'max-forwards'
+                              , 'subject'
+                              , 'content-type'
+                              , 'content-length'], Sip#sip.hdrs),
+    #sip{ type = request
+        , method = <<"BYE">>
+        , uri = gen_uri("sip", "service", ToHostPort)
+        , hdrs = [ {contact, [{<<>>, gen_uri("sip", "service", FromHostPort), []}]}
+                 , {via, [gen_via(FromHostPort)]}
+                 , {cseq, 3} |Header]}.

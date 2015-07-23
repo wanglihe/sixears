@@ -94,6 +94,11 @@ init([ScriptName]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_call(callid, {Pid, _}, #state{callid = CallIdNum} = State) ->
+    CallId = integer_to_binary(CallIdNum),
+    put(Pid, CallId),
+    put(CallId, Pid),
+    {reply, CallId, State#state{callid = CallIdNum+1}};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -110,17 +115,13 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 handle_cast({start}, State) ->
     #state{ script = Script
-          , server = Server
-          , callid = CallIdNum} = State,
-    CallId = integer_to_binary(CallIdNum),
-    case execute_script:start_link(Script, Server, CallId) of
-        {ok, Pid} ->
-            put(Pid, CallId),
-            put(CallId, Pid);
+          , server = Server} = State,
+    case execute_script:start_link(Script, Server) of
+        {ok, _Pid} ->
+            {noreply, State};
         {error, _Reason} ->
-            ok
-    end,
-    {noreply, State#state{ callid = CallIdNum + 1}};
+            {noreply, State}
+    end;
 handle_cast({confserver, Msg}, State) ->
     #state{conf_port = Socket} = State,
     io:format("conf ---------------------->~p~n", [Msg]),
