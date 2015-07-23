@@ -24,6 +24,8 @@
 -record(state, { script
                , server
                , script_step
+               , sessions
+               , sess_init_num = 0
                , sess_num = 0}).
 
 %%%===================================================================
@@ -96,20 +98,50 @@ handle_cast(self_start, State) ->
     case Script of
         [] ->
             {stop, normal, State};
-        [{create, session, Sesses}|_RestCommand] ->
-            lists:foreach(fun(S) ->
+        [{create, session, Names}|RestCommand] ->
+            Sessions = lists:map(fun(S) ->
                                   io:format("new session ~p~n", [S]),
                                   {ok, Pid} = session:start_link(Server),
                                   put(Pid, S),
-                                  put(S, Pid)
+                                  put(S, Pid),
+                                  Pid
                           end
-                          , Sesses),
-            {noreply, State#state{sess_num = length(Sesses)}};
+                          , Names),
+            {noreply, State#state{ sess_num = length(Sessions)
+                                 , sessions = Sessions
+                                 , script = RestCommand}};
         _ ->
             io:format("Why not create session first?~n"),
             {stop, normal, State}
     end;
-handle_cast(_Msg, State) ->
+handle_cast(init_complete, #state{ sess_num = Num
+                                 , sess_init_num = InitNum} = State) when Num > InitNum + 1->
+    {noreply, State#state{sess_init_num = InitNum + 1}};
+handle_cast(init_complete, #state{ sess_num = Num
+                                 , sess_init_num = InitNum
+                                 , script = Script} = State) when Num =:= InitNum + 1->
+    case Script of
+        [] ->
+            {stop, normal, State};
+        [Command|RestCommand] ->
+            case Command of
+                {destroy, session, _} ->
+                    %% now only support destroy all
+                    Sessions = State#state.sessions,
+                    lists:foreach(fun(S) ->
+                                          gen_server:cast(S, destroy)
+                                  end, Sessions),
+                    {noreply, State#state{script = RestCommand}};
+                _ ->
+                    {noreply, State#state{script = RestCommand}}
+            end;
+        _ ->
+            io:format("bad script? ~p~n", [Script]),
+            {stop, normal, State}
+    end;
+
+handle_cast(Msg, State) ->
+    io:format("~p get unknow cast ~p~n", [?MODULE, Msg]),
     {noreply, State}.
 
 %%--------------------------------------------------------------------

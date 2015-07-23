@@ -22,6 +22,7 @@
 -define(SERVER, ?MODULE).
 
 -record(state, { server
+               , script_pid
                , callid
                , conf_inv200
                , client_inv200
@@ -39,7 +40,7 @@
 %% @end
 %%--------------------------------------------------------------------
 start_link(Server) ->
-    gen_server:start_link(?MODULE, [Server], []).
+    gen_server:start_link(?MODULE, [self(), Server], []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -56,12 +57,13 @@ start_link(Server) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([Server]) ->
+init([ScriptPid, Server]) ->
     CallId = gen_server:call(core_dispatch, callid),
     io:format("session ~p get callid ~p~n", [self(), CallId]),
     gen_server:cast(self(), self_start),
     {ok, #state{ server = Server
-               , callid = CallId}}.
+               , callid = CallId
+               , script_pid = ScriptPid}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -117,12 +119,24 @@ handle_cast({clientserver, Sip}, #state{step = wait_client_invite} = State) ->
     ClientAck = gen_ack({ClientHost, ClientPort}, {"the3pcc.local", 5060}, Sip, <<>>),
     gen_server:cast(core_dispatch, {clientserver, esip:encode(ClientAck)}),
 
+    io:format("~p init completed, send to ~p ~n", [self(), State#state.script_pid]),
+    gen_server:cast(State#state.script_pid, init_complete),
+    {noreply, State#state{client_inv200 = Sip}};
+
+handle_cast(destroy, State) ->
+    #state{ server = Server
+          , conf_inv200 = Conf200
+          , client_inv200 = Client200} = State,
+    {server, {conf, ConfHost, ConfPort}, {client, ClientHost, ClientPort}} = Server,
     ConfBye = gen_bye({ConfHost, ConfPort}, {"the3pcc.local", 5060}, Conf200),
     gen_server:cast(core_dispatch, {confserver, esip:encode(ConfBye)}),
-    ClientBye = gen_bye({ClientHost, ClientPort}, {"the3pcc.local", 5061}, Sip),
+    ClientBye = gen_bye({ClientHost, ClientPort}, {"the3pcc.local", 5061}, Client200),
     gen_server:cast(core_dispatch, {clientserver, esip:encode(ClientBye)}),
-
-    {stop, normal, State#state{client_inv200 = Sip}};
+    {noreply, State#state{step = wait_bye}};
+handle_cast({_S, _Sip}, State) when State#state.step =:= wait_bye ->
+    {noreply, State#state{step = wait_bye_1}};
+handle_cast({_S, _Sip}, State) when State#state.step =:= wait_bye_1 ->
+    {stop, normal, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
