@@ -23,7 +23,8 @@
 
 -record(state, { script
                , server
-               , script_step}).
+               , script_step
+               , sess_num = 0}).
 
 %%%===================================================================
 %%% API
@@ -103,7 +104,7 @@ handle_cast(self_start, State) ->
                                   put(S, Pid)
                           end
                           , Sesses),
-            {noreply, State};
+            {noreply, State#state{sess_num = length(Sesses)}};
         _ ->
             io:format("Why not create session first?~n"),
             {stop, normal, State}
@@ -125,7 +126,12 @@ handle_info({'EXIT', Pid, _}, State) ->
     SName = erase(Pid),
     erase(SName),
     io:format("erase session ~p with pid ~p~n", [SName, Pid]),
-    {noreply, State};
+    case State#state.sess_num - 1 of
+        0 ->
+            {stop, normal, State};
+        NSessNum ->
+            {noreply, State#state{sess_num = NSessNum}}
+    end;
 handle_info(_Info, State) ->
     {noreply, State}.
 
