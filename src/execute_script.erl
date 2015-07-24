@@ -197,13 +197,16 @@ run_script(Script, State) ->
                                           gen_server:cast(S, destroy)
                                   end, Sessions),
                     {noreply, State#state{script = RestCommand}};
-                {Server, Sess, Comm} when Server =:= confserver
+                {Server, Sess, Comms} when Server =:= confserver
                                         ; Server =:= clientserver ->
                     Pid = get(Sess),
-                    io:format("send ~p to ~p~n", [{Server, Comm}, Pid]),
-                    gen_server:cast(Pid, {Server, Comm}),
+                    io:format("send ~p to ~p~n", [{Server, Comms}, Pid]),
+                    lists:foreach(fun(Comm) ->
+                                          gen_server:cast(Pid, {Server, Comm})
+                                  end, Comms),
                     run_script(RestCommand, State);
                 {pause, Timeout} ->
+                    io:format("pause for ~pms~n", [Timeout]),
                     {noreply, State#state{script = RestCommand}, Timeout};
                 _ ->
                     io:format("unknow comm ~p~n", [Command]),

@@ -20,6 +20,8 @@
 -include_lib("p1_sip/include/esip.hrl").
 
 -define(SERVER, ?MODULE).
+-define(CONFLOCAl, {"the3pcc.local", 5060}).
+-define(CLIENTLOCAL, {"the3pcc.local", 5061}).
 
 -record(state, { server
                , script_pid
@@ -97,7 +99,7 @@ handle_cast(self_start, State) ->
     #state{ server = Server
           , callid = CallId} = State,
     {server, {conf, ConfHost, ConfPort}, _} = Server,
-    ConfInvite = gen_invite(CallId, {ConfHost, ConfPort}, {"the3pcc.loacal", 5060}, <<>>),
+    ConfInvite = gen_invite(CallId, {ConfHost, ConfPort}, ?CONFLOCAl, <<>>),
     gen_server:cast(core_dispatch, {confserver, esip:encode(ConfInvite)}),
     {noreply, State#state{step = wait_conf_invite}};
 handle_cast({confserver, #sip{} = Sip}, #state{step = wait_conf_invite} = State) ->
@@ -105,7 +107,7 @@ handle_cast({confserver, #sip{} = Sip}, #state{step = wait_conf_invite} = State)
     #state{ server = Server
           , callid = CallId} = State,
     {server, _, {client, ClientHost, ClientPort}} = Server,
-    ClientInvite = gen_invite(CallId, {ClientHost, ClientPort}, {"the3pcc.local", 5061}, Sdp),
+    ClientInvite = gen_invite(CallId, {ClientHost, ClientPort}, ?CLIENTLOCAL, Sdp),
     gen_server:cast(core_dispatch, {clientserver, esip:encode(ClientInvite)}),
     {noreply, State#state{ step = wait_client_invite
                          , conf_inv200 = Sip}};
@@ -114,23 +116,24 @@ handle_cast({clientserver, #sip{} = Sip}, #state{step = wait_client_invite} = St
           , conf_inv200 = Conf200} = State,
     {server, {conf, ConfHost, ConfPort}, {client, ClientHost, ClientPort}} = Server,
     #sip{body = Sdp} = Sip,
-    ConfAck = gen_ack({ConfHost, ConfPort}, {"the3pcc.local", 5060}, Conf200, Sdp),
+    ConfAck = gen_ack({ConfHost, ConfPort}, ?CONFLOCAl, Conf200, Sdp),
     gen_server:cast(core_dispatch, {confserver, esip:encode(ConfAck)}),
-    ClientAck = gen_ack({ClientHost, ClientPort}, {"the3pcc.local", 5060}, Sip, <<>>),
+    ClientAck = gen_ack({ClientHost, ClientPort}, ?CLIENTLOCAL, Sip, <<>>),
     gen_server:cast(core_dispatch, {clientserver, esip:encode(ClientAck)}),
 
     io:format("~p init completed, send to ~p ~n", [self(), State#state.script_pid]),
     gen_server:cast(State#state.script_pid, init_complete),
-    {noreply, State#state{client_inv200 = Sip}};
+    {noreply, State#state{ client_inv200 = Sip
+                         , step = none}};
 
 handle_cast(destroy, State) ->
     #state{ server = Server
           , conf_inv200 = Conf200
           , client_inv200 = Client200} = State,
     {server, {conf, ConfHost, ConfPort}, {client, ClientHost, ClientPort}} = Server,
-    ConfBye = gen_bye({ConfHost, ConfPort}, {"the3pcc.local", 5060}, Conf200),
+    ConfBye = gen_bye({ConfHost, ConfPort}, ?CONFLOCAl, Conf200),
     gen_server:cast(core_dispatch, {confserver, esip:encode(ConfBye)}),
-    ClientBye = gen_bye({ClientHost, ClientPort}, {"the3pcc.local", 5061}, Client200),
+    ClientBye = gen_bye({ClientHost, ClientPort}, ?CLIENTLOCAL, Client200),
     gen_server:cast(core_dispatch, {clientserver, esip:encode(ClientBye)}),
     {noreply, State#state{step = wait_bye}};
 
@@ -139,11 +142,30 @@ handle_cast({_S, #sip{} = _Sip}, State) when State#state.step =:= wait_bye ->
 handle_cast({_S, #sip{} = _Sip}, State) when State#state.step =:= wait_bye_1 ->
     {stop, normal, State};
 
-handle_cast({clientserver, Comm}, State) ->
-    io:format("clientserver goes ~p~n", [Comm]),
+handle_cast({_S, #sip{status = 200} = _Sip}, State) ->
     {noreply, State};
+handle_cast({S, #sip{} = Sip}, State) ->
+    io:format("unexpect ~p sip ~p~n", [S, Sip]),
+    {noreply, State};
+
 handle_cast({confserver, Comm}, State) ->
+    #state{ server = Server
+          , conf_inv200 = Conf200} = State,
     io:format("confserver goes ~p~n", [Comm]),
+    {server, {conf, ConfHost, ConfPort}, _} = Server,
+    Msml = gen_msml(Comm),
+    ConfInfo = gen_info({ConfHost, ConfPort}, ?CONFLOCAl, Conf200, Msml),
+    gen_server:cast(core_dispatch, {confserver, esip:encode(ConfInfo)}),
+    {noreply, State};
+
+handle_cast({clientserver, Comm}, State) ->
+    #state{ server = Server
+          , client_inv200 = Client200} = State,
+    io:format("clientserver goes ~p~n", [Comm]),
+    {server, _, {client, ClientHost, ClientPort}} = Server,
+    Msml = gen_msml(Comm),
+    ClientInfo = gen_info({ClientHost, ClientPort}, ?CLIENTLOCAL, Client200, Msml),
+    gen_server:cast(core_dispatch, {clientserver, esip:encode(ClientInfo)}),
     {noreply, State};
 
 handle_cast(_Msg, State) ->
@@ -248,3 +270,33 @@ gen_bye(ToHostPort, FromHostPort, Sip) ->
         , hdrs = [ {contact, [{<<>>, gen_uri("sip", "service", FromHostPort), []}]}
                  , {via, [gen_via(FromHostPort)]}
                  , {cseq, 3} |Header]}.
+gen_info(ToHostPort, FromHostPort, Sip, Body) ->
+    Header = esip:filter_hdrs([ 'from'
+                              , 'to'
+                              , 'call-id'
+                              , 'max-forwards'
+                              , 'subject'
+                              , 'content-length'], Sip#sip.hdrs),
+    Sip#sip{ type = request
+           , method = <<"INFO">>
+           , uri = gen_uri("sip", "service", ToHostPort)
+           , hdrs = [ {contact, [{<<>>, gen_uri("sip", "service", FromHostPort), []}]}
+                    , {via, [gen_via(FromHostPort)]}
+                    , {cseq, 2}
+                    , {'content-type', {<<"application/msml+xml">>, []}} |Header]
+           , body = Body}.
+gen_msml({play, Filename}) ->
+    Format =
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r
+        <msml version=\"1.1\">\r
+        <dialogstart target=\"conn:12345\" name=\"12345\">\r
+        <play barge=\"false\" iterate=\"50\" interval=\"0\" maxtime=\"600s\">\r
+        <audio uri=\"~s\"/>\r
+        <playexit>\r
+        <send target=\"source\" event=\"done\" namelist=\"play.end play.amt\"/>\r
+        </playexit>\r
+        </play>\r
+        </dialogstart>\r
+        </msml>",
+    Msml = lists:flatten(io_lib:format(Format, [Filename])),
+    list_to_binary(Msml).
