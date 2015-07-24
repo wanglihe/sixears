@@ -27,7 +27,8 @@
                , client_port
                , server
                , script
-               , callid}).
+               , callid
+               , rate}).
 
 %%%===================================================================
 %%% API
@@ -65,7 +66,7 @@ init([ScriptName]) ->
         {ok, Script} ->
             [Server|RealScript] = Script,
             {ConfPort, ClientPort} = init_server(Server),
-            gen_server:cast(self(), {start}), %%启动相关参数加在这里，
+            gen_server:cast(self(), {start, {rate, 5}}), %%启动相关参数加在这里，
                                                  %%如每秒新发，最大并发
             {A,B,C} = os:timestamp(),
             random:seed(A,B,C),
@@ -114,15 +115,9 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_cast({start}, State) ->
-    #state{ script = Script
-          , server = Server} = State,
-    case execute_script:start_link(Script, Server) of
-        {ok, _Pid} ->
-            {noreply, State};
-        {error, _Reason} ->
-            {noreply, State}
-    end;
+handle_cast({start, {rate, N}}, State) ->
+    erlang:send_after(1000, self(), rate),
+    {noreply, State#state{rate = N}};
 handle_cast({confserver, Msg}, State) ->
     #state{conf_port = Socket} = State,
     %%io:format("conf ---------------------->~p~n", [Msg]),
@@ -173,6 +168,22 @@ handle_info({udp, Port, _A, _P , Msg}, #state{client_port = Port} = State) ->
     Pid = get(CallId),
     gen_server:cast(Pid, {clientserver, Sip}),
     {noreply, State};
+
+handle_info(rate, State) ->
+    #state{ script = Script
+          , server = Server
+          , rate = N} = State,
+    erlang:send_after(1000, self(), rate),
+    lists:foreach(fun(_) ->
+        case execute_script:start_link(Script, Server) of
+            {ok, _Pid} ->
+                ok;
+            {error, _Reason} ->
+                ok
+        end
+        end, lists:seq(1,N)),
+    {noreply, State};
+
 handle_info(Info, State) ->
     io:format("get info ~p~n", [Info]),
     {noreply, State}.

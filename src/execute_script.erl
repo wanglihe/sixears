@@ -40,7 +40,7 @@
 %% @end
 %%--------------------------------------------------------------------
 start_link(Script, Server) ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [Script, Server], []).
+    gen_server:start_link(?MODULE, [Script, Server], []).
 
 %%%===================================================================
 %%% gen_server callbacks
