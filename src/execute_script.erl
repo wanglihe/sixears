@@ -208,6 +208,21 @@ run_script(Script, State) ->
                 {pause, Timeout} ->
                     io:format("pause for ~pms~n", [Timeout]),
                     {noreply, State#state{script = RestCommand}, Timeout};
+                {create, conf, Names, Sess} ->
+                    Pid = get(Sess),
+                    put(conf_ctl, Pid),
+                    %% this time just for one, later will add multiple confs
+                    [Name|_] = Names,
+                    io:format("create conf ~p in session ~p~n", [Name, Sess]),
+                    gen_server:cast(Pid, {confserver, {conf, create, Name}}),
+                    run_script(RestCommand, State);
+                {destroy, conf, Names} ->
+                    Pid = get(conf_ctl),
+                    %% this time just for one, later will add multiple confs
+                    [Name|_] = Names,
+                    io:format("destroy conf ~p~n", [Name]),
+                    gen_server:cast(Pid, {confserver, {conf, destroy, Name}}),
+                    run_script(RestCommand, State);
                 _ ->
                     io:format("unknow comm ~p~n", [Command]),
                     run_script(RestCommand, State)

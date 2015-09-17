@@ -66,7 +66,7 @@ init([ScriptName]) ->
         {ok, Script} ->
             [Server|RealScript] = Script,
             {ConfPort, ClientPort} = init_server(Server),
-            gen_server:cast(self(), {start, {rate, 5}}), %%启动相关参数加在这里，
+            gen_server:cast(self(), {start, {rate, 1}}), %%启动相关参数加在这里，
                                                  %%如每秒新发，最大并发
             {A,B,C} = os:timestamp(),
             random:seed(A,B,C),
@@ -173,7 +173,7 @@ handle_info(rate, State) ->
     #state{ script = Script
           , server = Server
           , rate = N} = State,
-    erlang:send_after(1000, self(), rate),
+    %%erlang:send_after(1000, self(), rate),
     lists:foreach(fun(_) ->
         case execute_script:start_link(Script, Server) of
             {ok, _Pid} ->

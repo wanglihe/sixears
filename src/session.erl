@@ -299,4 +299,25 @@ gen_msml({play, Filename}) ->
         </dialogstart>\r
         </msml>",
     Msml = lists:flatten(io_lib:format(Format, [Filename])),
+    list_to_binary(Msml);
+gen_msml({conf, create, Name}) ->
+    Format =
+      "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r
+      <msml version=\"1.1\">\r
+          <createconference name=\"~s\" deletewhen=\"never\">    \r
+                      <audiomix id=\"mix1\">\r
+                              <n-loudest n=\"3\"/>\r
+                      </audiomix>\r
+          </createconference>\r
+      </msml>",
+    Msml = lists:flatten(io_lib:format(Format, [Name])),
+    list_to_binary(Msml);
+gen_msml({conf, destroy, Name}) ->
+    Format =
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r
+        <msml version=\"1.1\">\r
+            <destroyconference name=\"~s\">\r
+            </destroyconference>\r
+        </msml>",
+    Msml = lists:flatten(io_lib:format(Format, [Name])),
     list_to_binary(Msml).
