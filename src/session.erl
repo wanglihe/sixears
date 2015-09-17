@@ -107,6 +107,8 @@ handle_cast({confserver, #sip{} = Sip}, #state{step = wait_conf_invite} = State)
     #state{ server = Server
           , callid = CallId} = State,
     {server, _, {client, ClientHost, ClientPort}} = Server,
+    ConfToTag = find_totag(Sip),
+    put(conf_to_tag, ConfToTag),
     ClientInvite = gen_invite(CallId, {ClientHost, ClientPort}, ?CLIENTLOCAL, Sdp),
     gen_server:cast(core_dispatch, {clientserver, esip:encode(ClientInvite)}),
     {noreply, State#state{ step = wait_client_invite
@@ -320,4 +322,34 @@ gen_msml({conf, destroy, Name}) ->
             </destroyconference>\r
         </msml>",
     Msml = lists:flatten(io_lib:format(Format, [Name])),
+    list_to_binary(Msml);
+gen_msml({conf, join, ConfName, _SessionName}) ->
+    Format =
+      "<?xml version=\"1.0\" encoding=\"utf-8\"?>\r
+      <msml version=\"1.1\">\r
+        <join id1=\"conn:~s\" id2=\"conf:~s\">\r
+              <stream media=\"audio\" dir=\"from-id1\"/>\r
+              <stream media=\"audio\" dir=\"to-id1\"/>\r
+        </join>\r
+      </msml>",
+    %%it will use SessionName to find conf_to_tag
+    ConfToTag = get(conf_to_tag),
+    Msml = lists:flatten(io_lib:format(Format, [ConfToTag, ConfName])),
+    list_to_binary(Msml);
+
+gen_msml({conf, unjoin, ConfName, _SessionName}) ->
+    Format =
+      "<?xml version=\"1.0\" encoding=\"utf-8\"?>\r
+      <msml version=\"1.1\">\r
+          <unjoin id1=\"conn:~s\" id2=\"conf:~s\">\r
+              <stream dir=\"from-id1\" media=\"audio\"/>\r
+              <stream dir=\"to-id1\" media=\"audio\"/>\r
+          </unjoin>\r
+      </msml>",
+    ConfToTag = get(conf_to_tag),
+    Msml = lists:flatten(io_lib:format(Format, [ConfToTag, ConfName])),
     list_to_binary(Msml).
+
+find_totag(#sip{hdrs = Headers}) ->
+    {_, _, ToParams} = esip:get_hdr('to', Headers),
+    esip:to_lower(esip:get_param(<<"tag">>, ToParams)).

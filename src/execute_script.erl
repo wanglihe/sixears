@@ -223,6 +223,19 @@ run_script(Script, State) ->
                     io:format("destroy conf ~p~n", [Name]),
                     gen_server:cast(Pid, {confserver, {conf, destroy, Name}}),
                     run_script(RestCommand, State);
+                {join, ConfName, SessionName} ->
+                    %% this time just for one, later will add multiple confs
+                    Pid = get(conf_ctl),
+                    io:format("join ~p ~p~n", [ConfName, SessionName]),
+                    gen_server:cast(Pid, {confserver, {conf, join, ConfName, SessionName}}),
+                    run_script(RestCommand, State);
+                {unjoin, ConfName, SessionName} ->
+                    %% this time just for one, later will add multiple confs
+                    Pid = get(conf_ctl),
+                    io:format("unjoin ~p ~p~n", [ConfName, SessionName]),
+                    gen_server:cast(Pid, {confserver, {conf, unjoin, ConfName, SessionName}}),
+                    run_script(RestCommand, State);
+
                 _ ->
                     io:format("unknow comm ~p~n", [Command]),
                     run_script(RestCommand, State)
