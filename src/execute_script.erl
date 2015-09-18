@@ -226,14 +226,28 @@ run_script(Script, State) ->
                 {join, ConfName, SessionName} ->
                     %% this time just for one, later will add multiple confs
                     Pid = get(conf_ctl),
+                    SPid = get(SessionName),
                     io:format("join ~p ~p~n", [ConfName, SessionName]),
-                    gen_server:cast(Pid, {confserver, {conf, join, ConfName, SessionName}}),
+                    gen_server:cast(Pid, {confserver, {conf, join, ConfName, SPid}}),
                     run_script(RestCommand, State);
                 {unjoin, ConfName, SessionName} ->
                     %% this time just for one, later will add multiple confs
                     Pid = get(conf_ctl),
+                    SPid = get(SessionName),
                     io:format("unjoin ~p ~p~n", [ConfName, SessionName]),
-                    gen_server:cast(Pid, {confserver, {conf, unjoin, ConfName, SessionName}}),
+                    gen_server:cast(Pid, {confserver, {conf, unjoin, ConfName, SPid}}),
+                    run_script(RestCommand, State);
+                {confserver, conf, Name, Commands} ->
+                    Pid = get(conf_ctl),
+                    gen_server:cast(Pid, {confserver, {conf, media, Name, Commands}}),
+                    run_script(RestCommand, State);
+                {confserver, session, Name, Commands} ->
+                    Pid = get(Name),
+                    gen_server:cast(Pid, {confserver, {session, media, Name, Commands}}),
+                    run_script(RestCommand, State);
+                {clientserver, session, Name, Commands} ->
+                    Pid = get(Name),
+                    gen_server:cast(Pid, {clientserver, {session, media, Name, Commands}}),
                     run_script(RestCommand, State);
 
                 _ ->

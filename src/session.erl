@@ -81,6 +81,9 @@ init([ScriptPid, Server]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_call(conf_to_tag, _From, State) ->
+    Reply = get(conf_to_tag),
+    {reply, Reply, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -156,9 +159,14 @@ handle_cast({confserver, Comm}, State) ->
     io:format("confserver goes ~p~n", [Comm]),
     {server, {conf, ConfHost, ConfPort}, _} = Server,
     Msml = gen_msml(Comm),
-    ConfInfo = gen_info({ConfHost, ConfPort}, ?CONFLOCAl, Conf200, Msml),
-    gen_server:cast(core_dispatch, {confserver, esip:encode(ConfInfo)}),
-    {noreply, State};
+    case Msml of
+        [] ->
+            {noreply, State};
+        _ ->
+            ConfInfo = gen_info({ConfHost, ConfPort}, ?CONFLOCAl, Conf200, Msml),
+            gen_server:cast(core_dispatch, {confserver, esip:encode(ConfInfo)}),
+            {noreply, State}
+    end;
 
 handle_cast({clientserver, Comm}, State) ->
     #state{ server = Server
@@ -166,9 +174,14 @@ handle_cast({clientserver, Comm}, State) ->
     io:format("clientserver goes ~p~n", [Comm]),
     {server, _, {client, ClientHost, ClientPort}} = Server,
     Msml = gen_msml(Comm),
-    ClientInfo = gen_info({ClientHost, ClientPort}, ?CLIENTLOCAL, Client200, Msml),
-    gen_server:cast(core_dispatch, {clientserver, esip:encode(ClientInfo)}),
-    {noreply, State};
+    case Msml of
+        [] ->
+            {noreply, State};
+        _ ->
+            ClientInfo = gen_info({ClientHost, ClientPort}, ?CLIENTLOCAL, Client200, Msml),
+            gen_server:cast(core_dispatch, {clientserver, esip:encode(ClientInfo)}),
+            {noreply, State}
+    end;
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -323,7 +336,7 @@ gen_msml({conf, destroy, Name}) ->
         </msml>",
     Msml = lists:flatten(io_lib:format(Format, [Name])),
     list_to_binary(Msml);
-gen_msml({conf, join, ConfName, _SessionName}) ->
+gen_msml({conf, join, ConfName, SPid}) ->
     Format =
       "<?xml version=\"1.0\" encoding=\"utf-8\"?>\r
       <msml version=\"1.1\">\r
@@ -332,12 +345,17 @@ gen_msml({conf, join, ConfName, _SessionName}) ->
               <stream media=\"audio\" dir=\"to-id1\"/>\r
         </join>\r
       </msml>",
-    %%it will use SessionName to find conf_to_tag
-    ConfToTag = get(conf_to_tag),
+    Self = self(),
+    ConfToTag = case SPid of
+                    Self ->
+                        get(conf_to_tag);
+                    _ ->
+                        gen_server:call(SPid, conf_to_tag)
+                end,
     Msml = lists:flatten(io_lib:format(Format, [ConfToTag, ConfName])),
     list_to_binary(Msml);
 
-gen_msml({conf, unjoin, ConfName, _SessionName}) ->
+gen_msml({conf, unjoin, ConfName, SPid}) ->
     Format =
       "<?xml version=\"1.0\" encoding=\"utf-8\"?>\r
       <msml version=\"1.1\">\r
@@ -346,9 +364,46 @@ gen_msml({conf, unjoin, ConfName, _SessionName}) ->
               <stream dir=\"to-id1\" media=\"audio\"/>\r
           </unjoin>\r
       </msml>",
-    ConfToTag = get(conf_to_tag),
+    Self = self(),
+    ConfToTag = case SPid of
+                    Self ->
+                        get(conf_to_tag);
+                    _ ->
+                        gen_server:call(SPid, conf_to_tag)
+                end,
     Msml = lists:flatten(io_lib:format(Format, [ConfToTag, ConfName])),
-    list_to_binary(Msml).
+    list_to_binary(Msml);
+gen_msml({conf, media, ConfName, Cmds}) ->
+    FormatHead =
+      "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r
+      <msml version=\"1.1\">\r
+          <dialogstart target=\"conf:~s\" name=\"audioPlay\" mark=\"7\">\r
+              <record maxtime=\"10s\" dest=\"file://~s\" format=\"g711u\" termkey=\"9\">\r\n",
+
+    FormatPlay =
+      "           <play>\r
+                      <audio uri=\"file://~s\"/>\r
+                  </play>\r\n",
+    FormatTail =
+      "           <recordexit>\r
+                      <send target=\"source\" event=\"done\" valuelist=\"record.len record.end\"/>\r
+                  </recordexit>\r
+              </record>\r
+          </dialogstart>\r
+      </msml>",
+    Format = case lists:keyfind(play, 1, Cmds) of
+        false ->
+            FormatHead ++ FormatTail;
+        {play, PlayName} ->
+            FormatHead ++ io_lib:format(FormatPlay, [PlayName]) ++ FormatTail
+    end,
+    {record, RecName} = lists:keyfind(record, 1, Cmds),
+    Msml = lists:flatten(io_lib:format(Format, [ConfName, RecName])),
+    list_to_binary(Msml);
+
+gen_msml(UnSupport) ->
+    io:format("msml not gen for ~p~n", [UnSupport]),
+    [].
 
 find_totag(#sip{hdrs = Headers}) ->
     {_, _, ToParams} = esip:get_hdr('to', Headers),
