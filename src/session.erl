@@ -345,6 +345,7 @@ gen_msml({conf, join, ConfName, SPid}) ->
               <stream media=\"audio\" dir=\"to-id1\"/>\r
         </join>\r
       </msml>",
+    %%ConfToTag = get(conf_to_tag),
     Self = self(),
     ConfToTag = case SPid of
                     Self ->
@@ -364,6 +365,7 @@ gen_msml({conf, unjoin, ConfName, SPid}) ->
               <stream dir=\"to-id1\" media=\"audio\"/>\r
           </unjoin>\r
       </msml>",
+    %%ConfToTag = get(conf_to_tag),
     Self = self(),
     ConfToTag = case SPid of
                     Self ->
@@ -373,11 +375,41 @@ gen_msml({conf, unjoin, ConfName, SPid}) ->
                 end,
     Msml = lists:flatten(io_lib:format(Format, [ConfToTag, ConfName])),
     list_to_binary(Msml);
-gen_msml({conf, media, ConfName, Cmds}) ->
+
+%%gen_msml({conf, media, ConfName, Cmds}) ->
+%%    FormatHead =
+%%      "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r
+%%      <msml version=\"1.1\">\r
+%%          <dialogstart target=\"conf:~s\" name=\"audioPlay\" mark=\"7\">\r
+%%              <record maxtime=\"10s\" dest=\"file://~s\" format=\"g711u\" termkey=\"9\">\r\n",
+%%
+%%    FormatPlay =
+%%      "           <play>\r
+%%                      <audio uri=\"file://~s\"/>\r
+%%                  </play>\r\n",
+%%    FormatTail =
+%%      "           <recordexit>\r
+%%                      <send target=\"source\" event=\"done\" valuelist=\"record.len record.end\"/>\r
+%%                  </recordexit>\r
+%%              </record>\r
+%%          </dialogstart>\r
+%%      </msml>",
+%%    Format = case lists:keyfind(play, 1, Cmds) of
+%%        false ->
+%%            FormatHead ++ FormatTail;
+%%        {play, PlayName} ->
+%%            FormatHead ++ io_lib:format(FormatPlay, [PlayName]) ++ FormatTail
+%%    end,
+%%    {record, RecName} = lists:keyfind(record, 1, Cmds),
+%%    Msml = lists:flatten(io_lib:format(Format, [ConfName, RecName])),
+%%    list_to_binary(Msml);
+
+gen_msml({session, media, SessionName, Cmds}) ->
+    io:format("session cmds ~p~n", [Cmds]),
     FormatHead =
       "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r
       <msml version=\"1.1\">\r
-          <dialogstart target=\"conf:~s\" name=\"audioPlay\" mark=\"7\">\r
+          <dialogstart target=\"conn:~s\" name=\"audioPlay\" mark=\"7\">\r
               <record maxtime=\"10s\" dest=\"file://~s\" format=\"g711u\" termkey=\"9\">\r\n",
 
     FormatPlay =
@@ -398,9 +430,8 @@ gen_msml({conf, media, ConfName, Cmds}) ->
             FormatHead ++ io_lib:format(FormatPlay, [PlayName]) ++ FormatTail
     end,
     {record, RecName} = lists:keyfind(record, 1, Cmds),
-    Msml = lists:flatten(io_lib:format(Format, [ConfName, RecName])),
+    Msml = lists:flatten(io_lib:format(Format, [SessionName, RecName])),
     list_to_binary(Msml);
-
 gen_msml(UnSupport) ->
     io:format("msml not gen for ~p~n", [UnSupport]),
     [].
