@@ -319,10 +319,14 @@ gen_msml({conf, create, Name}) ->
     Format =
       "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r
       <msml version=\"1.1\">\r
-          <createconference name=\"~s\" deletewhen=\"never\">    \r
-                      <audiomix id=\"mix1\">\r
-                              <n-loudest n=\"3\"/>\r
-                      </audiomix>\r
+          <createconference name=\"~s\" deletewhen=\"never\">\r
+               <reserve>\r
+                  <resource n=\"20\">\r
+                  </resource>\r
+               </reserve>\r
+               <audiomix id=\"mix1\">\r
+                  <n-loudest n=\"3\"/>\r
+               </audiomix>\r
           </createconference>\r
       </msml>",
     Msml = lists:flatten(io_lib:format(Format, [Name])),
