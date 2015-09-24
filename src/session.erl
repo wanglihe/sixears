@@ -408,6 +408,21 @@ gen_msml({conf, unjoin, ConfName, SPid}) ->
 %%    Msml = lists:flatten(io_lib:format(Format, [ConfName, RecName])),
 %%    list_to_binary(Msml);
 
+gen_msml({conf, media, ConfName, Cmds}) ->
+    Format =
+      "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r
+      <msml version=\"1.1\">\r
+          <dialogstart target=\"conf:~s\" name=\"audioPlay\" mark=\"7\">\r
+                 <play>\r
+                      <audio uri=\"file://~s\"/>\r
+                 </play>\r
+                 <send target=\"source\" event=\"done\" valuelist=\"play.end\"/>\r
+          </dialogstart>\r
+      </msml>",
+    {play, PlayName} = lists:keyfind(play, 1, Cmds),
+    Msml = lists:flatten(io_lib:format(Format, [ConfName, PlayName])),
+    list_to_binary(Msml);
+
 gen_msml({session, media, SessionName, Cmds}) ->
     io:format("session cmds ~p~n", [Cmds]),
     FormatHead =
