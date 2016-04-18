@@ -315,6 +315,32 @@ gen_msml({play, Filename}) ->
         </msml>",
     Msml = lists:flatten(io_lib:format(Format, [Filename])),
     list_to_binary(Msml);
+gen_msml({play_digit, Filename}) ->
+    Format =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r
+            <msml version=\"1.1\">\r
+                <dialogstart target=\"conn:12345\" name=\"12345\">\r
+                    <dtmf fdt=\"5\" idt=\"3\" maxtime=\"123s\" starttimer=\"true\" >\r
+                        <play barge=\"true\" maxtime=\"444\">\r
+                            <audio uri=\"~s\"/>\r
+                        </play>\r
+                        <pattern digits=\"min=2;max=5;cancel=*;rtk=#\" format=\"moml+digits\">\r
+                            <send event=\"done\" namelist=\"dtmf.digits dtmf.end\" target=\"source\"/>\r
+                        </pattern>\r
+                        <noinput> \r
+                                <send target=\"source\" event=\"done\" namelist=\"dtmf.end\"/> \r
+                        </noinput> \r
+                        <nomatch> \r
+                                <send target=\"source\" event=\"done\" namelist=\"dtmf.end\"/> \r
+                        </nomatch>\r
+                        <dtmfexit>\r
+                            <send event=\"done\" namelist=\"dtmf.end\" target=\"source\"/>\r
+                        </dtmfexit>\r
+                    </dtmf>\r
+                </dialogstart>\r
+            </msml>\r",
+    Msml = lists:flatten(io_lib:format(Format, [Filename])),
+    list_to_binary(Msml);
 gen_msml({conf, create, Name}) ->
     Format =
       "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r
