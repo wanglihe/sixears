@@ -10,8 +10,9 @@ main(Args) ->
         [ScriptName|_] ->
             io:format("using conf script ~p~n", [ScriptName]),
             os:putenv("scriptname", ScriptName),
-            case application:start(sixears) of
-                ok ->
+            case application:ensure_all_started(sixears) of
+                {ok, Apps} ->
+                    io:format("application start: ~p~n", [Apps]),
                     process_cmd();
                 {error, Reason} ->
                     io:format("application get error ~p~n", [Reason])

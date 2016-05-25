@@ -5,7 +5,8 @@
   {registered, []},
   {applications, [
                   kernel,
-                  stdlib
+                  stdlib,
+                  esip
                  ]},
   {mod, { sixears_app, []}},
   {env, []}
