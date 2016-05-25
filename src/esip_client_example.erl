@@ -22,7 +22,7 @@ start() ->
     esip:set_config_value(max_client_transactions, 10000),
     esip:set_config_value(software, <<"sixears/0.0.2">>),
     esip:set_config_value(module, ?MODULE),
-    esip:add_listener(6060, udp, []),
+    esip:add_listener(5060, udp, []),
     SIPMsg = gen_invite({"127.0.0.1",5060}, {"127.0.0.2",5060}, "v=0"),
     {ok, SIPSock} = esip:connect(SIPMsg),
     esip:request(SIPSock, SIPMsg, {?MODULE, dialog_transaction_user, [{SIPMsg, SIPSock}]}),
