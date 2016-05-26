@@ -12,6 +12,8 @@
 
 -include_lib("p1_sip/include/esip.hrl").
 -define(DEBUG(Format, Args), io:format(Format, Args)).
+-define(TOHOSTPORT, {"127.0.0.1",5060}).
+-define(FROMHOSTPORT, {"127.0.0.2",5060}).
 
 %%%===================================================================
 %%% API
@@ -23,7 +25,7 @@ start() ->
     esip:set_config_value(software, <<"sixears/0.0.2">>),
     esip:set_config_value(module, ?MODULE),
     esip:add_listener(5060, udp, []),
-    SIPMsg = gen_invite({"127.0.0.1",5060}, {"127.0.0.2",5060}, "v=0"),
+    SIPMsg = gen_invite(?TOHOSTPORT, ?FROMHOSTPORT, <<>>),
     {ok, SIPSock} = esip:connect(SIPMsg),
     esip:request(SIPSock, SIPMsg, {?MODULE, dialog_transaction_user, [{SIPMsg, SIPSock}]}),
     ok.
@@ -68,11 +70,12 @@ locate(_SIPMsg) ->
 dialog_transaction_user(#sip{type = response, status = S},_,_,_) when S < 200->
     ok;
 dialog_transaction_user(#sip{type = response, status = S, method = <<"INVITE">>} = Resp,_,_,{Req, SIPSock}) when S =:= 200->
-    NReq = Resp#sip{type = request, method = <<"ACK">>, body = <<>>},
+    Sdp = Resp#sip.body,
+    NReq = gen_ack(?TOHOSTPORT, ?FROMHOSTPORT, Resp, Sdp),
     esip:open_dialog(Req, Resp, uac, {?MODULE, dialog_transaction_user,[{NReq, SIPSock}]}),
-    Ack = esip_dialog:prepare_request(esip:dialog_id(uac, NReq), NReq),
-    esip_transport:send(SIPSock, Ack),
-    timer:apply_after(3000, ?MODULE, send_bye, [{Ack, SIPSock}]),
+    %%Ack = esip_dialog:prepare_request(esip:dialog_id(uac, NReq), NReq),
+    esip_transport:send(SIPSock, NReq),
+    timer:apply_after(3000, ?MODULE, send_bye, [{NReq, SIPSock}]),
     ok;
 dialog_transaction_user(#sip{type = response, status = S, method = <<"BYE">>} = Resp,_,_,{_Req, _SIPSock}) when S =:= 200->
     ?DEBUG("dialog_transaction_user bye 200~n~n", []),
@@ -106,7 +109,23 @@ gen_uri(Scheme, User, {Host, Port}) ->
         , host = list_to_binary(Host)
         , port = Port}.
 
+gen_ack(ToHostPort, FromHostPort, Sip, Body) ->
+    Header = esip:filter_hdrs([ 'from'
+                              , 'to'
+                              , 'call-id'
+                              , 'max-forwards'
+                              , 'subject'
+                              , 'content-type'
+                              , 'content-length'], Sip#sip.hdrs),
+    Sip#sip{ type = request
+           , method = <<"ACK">>
+           , uri = gen_uri("sip", "service", ToHostPort)
+           , hdrs = [ {contact, [{<<>>, gen_uri("sip", "service", FromHostPort), []}]}
+                    , {via, [gen_via(FromHostPort)]}
+                    , {cseq, 999}  |Header]
+           , body = Body}.
+
 send_bye({Ack, SIPSock}) ->
     NReq = Ack#sip{type = request, method = <<"BYE">>, body = <<>>},
-    Bye = esip_dialog:prepare_request(esip:dialog_id(uac, NReq), NReq),
-    esip:request(SIPSock, Bye, {?MODULE, dialog_transaction_user, [{Bye, SIPSock}]}).
+    %%Bye = esip_dialog:prepare_request(esip:dialog_id(uac, NReq), NReq),
+    esip:request(SIPSock, NReq, {?MODULE, dialog_transaction_user, [{NReq, SIPSock}]}).
