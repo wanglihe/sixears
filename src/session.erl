@@ -208,7 +208,7 @@ handle_cast(destroy, State) ->
     ClientReq = ClientAck#sip{type = request, method = <<"BYE">>, body = <<>>},
     ClientBye = esip_dialog:prepare_request(esip:dialog_id(uac, ClientReq), ClientReq),
     esip:request(ClientSock, ClientReq, {?MODULE, dialog_transaction_user, [self()]}),
-    {noreply, State};
+    {noreply, State#state{step = wait_bye}};
 
 handle_cast({bye_200, Resp}, State) when State#state.step =:= wait_bye ->
     esip:close_dialog(esip:dialog_id(uac, Resp)),
@@ -563,7 +563,7 @@ dialog_transaction_user(#sip{type = response, status = S, method = <<"INVITE">>}
     gen_server:cast(Pid, {inv_200, Resp}),
     ok;
 dialog_transaction_user(#sip{type = response, status = S, method = <<"BYE">>} = Resp,_,_,Pid) when S =:= 200->
-    gen_server:cast(Pid, {inv_200, Resp}),
+    gen_server:cast(Pid, {bye_200, Resp}),
     ok;
 dialog_transaction_user(A,B,C,_) ->
     ?DEBUG("dialog_transaction_user: ~p~n~p~n~p~n~n", [A,B,C]).
