@@ -197,15 +197,17 @@ handle_cast({inv_200, ClientResp}, #state{step = wait_client_invite} = State) ->
                          , step = none}};
 
 handle_cast(destroy, State) ->
-    #state{ conf_ack = ConfAck
+    #state{ server = Server
+          , conf_ack = ConfAck
           , client_ack = ClientAck
           , conf_sock = ConfSock
           , client_sock = ClientSock} = State,
-    ConfReq = ConfAck#sip{type = request, method = <<"BYE">>, body = <<>>},
+    {server, {conf, ConfHost, ConfPort}, {client, ClientHost, ClientPort}} = Server,
+    ConfReq = gen_bye({ConfHost, ConfPort}, ?CONFLOCAl, ConfAck),
     ConfBye = esip_dialog:prepare_request(esip:dialog_id(uac, ConfReq), ConfReq),
     esip:request(ConfSock, ConfReq, {?MODULE, dialog_transaction_user, [self()]}),
 
-    ClientReq = ClientAck#sip{type = request, method = <<"BYE">>, body = <<>>},
+    ClientReq = gen_bye({ClientHost, ClientPort}, ?CONFLOCAl, ClientAck),
     ClientBye = esip_dialog:prepare_request(esip:dialog_id(uac, ClientReq), ClientReq),
     esip:request(ClientSock, ClientReq, {?MODULE, dialog_transaction_user, [self()]}),
     {noreply, State#state{step = wait_bye}};
@@ -300,8 +302,10 @@ gen_invite(ToHostPort, FromHostPort, Body) ->
     #sip{ type = request
         , method = <<"INVITE">>
         , uri = gen_uri("sip", "service", ToHostPort)
-        , hdrs = esip:make_hdrs()
-              ++ [ {via, [gen_via(FromHostPort)]}
+        , hdrs = [ {'cseq', 1}
+                 , {'max-forwards', esip:get_config_value(max_forwards)}
+                 , {'call-id', esip:make_callid()}
+                 , {via, [gen_via(FromHostPort)]}
                  , {from, {<<"sixears">>, gen_uri("sip", "sixears", FromHostPort),[{<<"tag">>, esip:make_tag()}]}}
                  , {to, {<<"service">>, gen_uri("sip", "service", ToHostPort), []}}
                  , {contact, [{<<>>, gen_uri("sip", "service", FromHostPort), []}]}
@@ -336,7 +340,7 @@ gen_ack(ToHostPort, FromHostPort, Sip, Body) ->
            , uri = gen_uri("sip", "service", ToHostPort)
            , hdrs = [ {contact, [{<<>>, gen_uri("sip", "service", FromHostPort), []}]}
                     , {via, [gen_via(FromHostPort)]}
-                    , {cseq, 998} |Header]
+                    , {cseq, 2} |Header]
            , body = Body}.
 
 gen_bye(ToHostPort, FromHostPort, Sip) ->
@@ -352,7 +356,7 @@ gen_bye(ToHostPort, FromHostPort, Sip) ->
         , uri = gen_uri("sip", "service", ToHostPort)
         , hdrs = [ {contact, [{<<>>, gen_uri("sip", "service", FromHostPort), []}]}
                  , {via, [gen_via(FromHostPort)]}
-                 , {cseq, 3} |Header]}.
+                 , {cseq, 10} |Header]}.
 gen_info(ToHostPort, FromHostPort, Sip, Body) ->
     Header = esip:filter_hdrs([ 'from'
                               , 'to'
@@ -365,7 +369,7 @@ gen_info(ToHostPort, FromHostPort, Sip, Body) ->
            , uri = gen_uri("sip", "service", ToHostPort)
            , hdrs = [ {contact, [{<<>>, gen_uri("sip", "service", FromHostPort), []}]}
                     , {via, [gen_via(FromHostPort)]}
-                    , {cseq, 997}
+                    , {cseq, 3}
                     , {'content-type', {<<"application/msml+xml">>, []}} |Header]
            , body = Body}.
 gen_msml({play, Filename}) ->
