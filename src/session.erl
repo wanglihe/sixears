@@ -190,7 +190,7 @@ handle_cast({inv_200, ClientResp}, #state{step = wait_client_invite} = State) ->
     ClientAck = esip_dialog:prepare_request(esip:dialog_id(uac, NClientReq), NClientReq),
     esip_transport:send(ClientSock, NClientReq),
     io:format("sent client ack~n"),
-    timer:send_after(1000, {destroy, self()}),
+    gen_server:cast(State#state.script_pid, init_complete),
     {noreply, State#state{ client_inv200 = ClientResp
                          , conf_ack = NConfReq
                          , client_ack = NClientReq
