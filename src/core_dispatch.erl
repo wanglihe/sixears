@@ -60,21 +60,15 @@ start_link(ScriptName) ->
 %% @end
 %%--------------------------------------------------------------------
 init([ScriptName]) ->
+    esip:add_listener(5060, udp, []),
     process_flag(trap_exit, true),
     io:format("core dispatch started with: ~p~n", [ScriptName]),
     case file:consult(ScriptName) of
         {ok, Script} ->
             [Server|RealScript] = Script,
-            {ConfPort, ClientPort} = init_server(Server),
             gen_server:cast(self(), {start, {rate, 1}}), %%启动相关参数加在这里，
                                                  %%如每秒新发，最大并发
-            {A,B,C} = os:timestamp(),
-            random:seed(A,B,C),
-            CallId = random:uniform(1000000),
-            {ok, #state{ conf_port = ConfPort
-                       , client_port = ClientPort
-                       , callid = CallId
-                       , server = Server
+            {ok, #state{ server = Server
                        , script = RealScript }};
         {error, Reason} ->
             io:format("load script get error ~p~n", [Reason]),
@@ -95,12 +89,6 @@ init([ScriptName]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call(callid, {Pid, _}, #state{callid = CallIdNum} = State) ->
-    CallId = integer_to_binary(CallIdNum),
-    link(Pid),
-    put(Pid, CallId),
-    put(CallId, Pid),
-    {reply, CallId, State#state{callid = CallIdNum+1}};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -118,17 +106,6 @@ handle_call(_Request, _From, State) ->
 handle_cast({start, {rate, N}}, State) ->
     erlang:send_after(1000, self(), rate),
     {noreply, State#state{rate = N}};
-handle_cast({confserver, Msg}, State) ->
-    #state{conf_port = Socket} = State,
-    %%io:format("conf ---------------------->~p~n", [Msg]),
-    gen_udp:send(Socket, Msg),
-    {noreply, State};
-
-handle_cast({clientserver, Msg}, State) ->
-    #state{client_port = Socket} = State,
-    %%io:format("client =====================>~p~n", [Msg]),
-    gen_udp:send(Socket, Msg),
-    {noreply, State};
 
 handle_cast(Msg, State) ->
     io:format("get cast ~p~n", [Msg]),
@@ -154,20 +131,6 @@ handle_info({'EXIT', Pid, _}, State) ->
             io:format("clean callid ~p~n", [CallId]),
             {noreply, State}
     end;
-handle_info({udp, Port, _A, _P , Msg}, #state{conf_port = Port} = State) ->
-    {ok, Sip} = esip:decode(Msg),
-    %%io:format("conf <------------------~p~n", [Sip]),
-    CallId = find_callid(Sip),
-    Pid = get(CallId),
-    gen_server:cast(Pid, {confserver, Sip}),
-    {noreply, State};
-handle_info({udp, Port, _A, _P , Msg}, #state{client_port = Port} = State) ->
-    {ok, Sip} = esip:decode(Msg),
-    %%io:format("client <================= ~p~n", [Sip]),
-    CallId = find_callid(Sip),
-    Pid = get(CallId),
-    gen_server:cast(Pid, {clientserver, Sip}),
-    {noreply, State};
 
 handle_info(rate, State) ->
     #state{ script = Script
@@ -216,14 +179,3 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-init_server({server, Conf, Client}) ->
-    {init_port(?CONFPORT, Conf), init_port(?CLIENTPORT, Client)}.
-
-init_port(LocalPort, {_, Addr, Port}) ->
-    {ok, Socket} = gen_udp:open(LocalPort, [binary]),
-    ok = gen_udp:connect(Socket, Addr, Port),
-    Socket.
-
-find_callid(#sip{hdrs = Headers}) ->
-    {_, CallId} = lists:keyfind('call-id', 1, Headers),
-    CallId.
