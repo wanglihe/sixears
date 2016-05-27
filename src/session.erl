@@ -217,14 +217,9 @@ handle_cast({bye_200, Resp}, State) when State#state.step =:= wait_bye_1 ->
     esip:close_dialog(esip:dialog_id(uac, Resp)),
     {stop, normal, State};
 
-handle_cast({_S, #sip{status = 200} = _Sip}, State) ->
-    {noreply, State};
-handle_cast({S, #sip{} = Sip}, State) ->
-    io:format("unexpect ~p sip ~p~n", [S, Sip]),
-    {noreply, State};
-
 handle_cast({confserver, Comm}, State) ->
     #state{ server = Server
+          , conf_sock = ConfSock
           , conf_inv200 = Conf200} = State,
     io:format("confserver goes ~p~n", [Comm]),
     {server, {conf, ConfHost, ConfPort}, _} = Server,
@@ -234,12 +229,13 @@ handle_cast({confserver, Comm}, State) ->
             {noreply, State};
         _ ->
             ConfInfo = gen_info({ConfHost, ConfPort}, ?CONFLOCAl, Conf200, Msml),
-            gen_server:cast(core_dispatch, {confserver, esip:encode(ConfInfo)}),
+            esip:request(ConfSock, ConfInfo, {?MODULE, dialog_transaction_user, [self()]}),
             {noreply, State}
     end;
 
 handle_cast({clientserver, Comm}, State) ->
     #state{ server = Server
+          , client_sock = ClientSock
           , client_inv200 = Client200} = State,
     io:format("clientserver goes ~p~n", [Comm]),
     {server, _, {client, ClientHost, ClientPort}} = Server,
@@ -249,7 +245,7 @@ handle_cast({clientserver, Comm}, State) ->
             {noreply, State};
         _ ->
             ClientInfo = gen_info({ClientHost, ClientPort}, ?CLIENTLOCAL, Client200, Msml),
-            gen_server:cast(core_dispatch, {clientserver, esip:encode(ClientInfo)}),
+            esip:request(ClientSock, ClientInfo, {?MODULE, dialog_transaction_user, [self()]}),
             {noreply, State}
     end;
 
@@ -369,7 +365,7 @@ gen_info(ToHostPort, FromHostPort, Sip, Body) ->
            , uri = gen_uri("sip", "service", ToHostPort)
            , hdrs = [ {contact, [{<<>>, gen_uri("sip", "service", FromHostPort), []}]}
                     , {via, [gen_via(FromHostPort)]}
-                    , {cseq, 2}
+                    , {cseq, 997}
                     , {'content-type', {<<"application/msml+xml">>, []}} |Header]
            , body = Body}.
 gen_msml({play, Filename}) ->
@@ -564,6 +560,8 @@ dialog_transaction_user(#sip{type = response, status = S, method = <<"INVITE">>}
     ok;
 dialog_transaction_user(#sip{type = response, status = S, method = <<"BYE">>} = Resp,_,_,Pid) when S =:= 200->
     gen_server:cast(Pid, {bye_200, Resp}),
+    ok;
+dialog_transaction_user(#sip{type = response, status = S} = Resp,_,_,Pid) when S =:= 200->
     ok;
 dialog_transaction_user(A,B,C,_) ->
     ?DEBUG("dialog_transaction_user: ~p~n~p~n~p~n~n", [A,B,C]).
