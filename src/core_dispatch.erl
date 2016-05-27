@@ -28,7 +28,8 @@
                , server
                , script
                , callid
-               , rate}).
+               , rate
+               , timer}).
 
 %%%===================================================================
 %%% API
@@ -104,8 +105,9 @@ handle_call(_Request, _From, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_cast({start, {rate, N}}, State) ->
-    erlang:send_after(1000, self(), rate),
-    {noreply, State#state{rate = N}};
+    {ok, TRef} = timer:send_interval(1000, rate),
+    {noreply, State#state{ rate = N
+                         , timer = TRef}};
 
 handle_cast(Msg, State) ->
     io:format("get cast ~p~n", [Msg]),
@@ -135,8 +137,9 @@ handle_info({'EXIT', Pid, _}, State) ->
 handle_info(rate, State) ->
     #state{ script = Script
           , server = Server
-          , rate = N} = State,
-    %%erlang:send_after(1000, self(), rate),
+          , rate = N
+          , timer = TRef} = State,
+    timer:cancel(TRef),
     lists:foreach(fun(_) ->
         case execute_script:start_link(Script, Server) of
             {ok, _Pid} ->
