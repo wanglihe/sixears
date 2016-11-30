@@ -340,7 +340,7 @@ gen_ack(ToHostPort, FromHostPort, Sip, Body) ->
            , uri = gen_uri("sip", "service", ToHostPort)
            , hdrs = [ {contact, [{<<>>, gen_uri("sip", "service", FromHostPort), []}]}
                     , {via, [gen_via(FromHostPort)]}
-                    , {cseq, 2} |Header]
+                    , {cseq, 1} |Header]
            , body = Body}.
 
 gen_bye(ToHostPort, FromHostPort, Sip) ->
