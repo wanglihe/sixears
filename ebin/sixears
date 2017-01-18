@@ -5,10 +5,10 @@
 %%escript在main退出后就自动退出了，这一点和erl不一样，需注意。
 %%所以要想script不退出，只要不退出main就行了。
 main(Args) ->
-    code:add_pathsa([ "../deps/esip/"
-                    , "../deps/fast_tls/"
-                    , "../deps/p1_utils/"
-                    , "../deps/stun/"]),
+    code:add_pathsa([ "../deps/esip/ebin/"
+                    , "../deps/fast_tls/ebin/"
+                    , "../deps/p1_utils/ebin/"
+                    , "../deps/stun/ebin/"]),
     io:format("Welcome to the sixears test tool~n"),
     case Args of
         [ScriptName|_] ->
