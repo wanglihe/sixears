@@ -10,7 +10,7 @@
 	 message_out/2, request/2, request/3, response/2,
 	 locate/1, dialog_transaction_user/3]).
 
--include_lib("p1_sip/include/esip.hrl").
+-include_lib("esip.hrl").
 -define(DEBUG(Format, Args), io:format(Format, Args)).
 
 %%%===================================================================

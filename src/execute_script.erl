@@ -19,7 +19,7 @@
 
 -define(SERVER, ?MODULE).
 
--include_lib("p1_sip/include/esip.hrl").
+-include_lib("esip.hrl").
 
 -record(state, { script
                , server
