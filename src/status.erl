@@ -1,35 +1,19 @@
-%%%-------------------------------------------------------------------
-%%% @author wanglihe <wanglihe.programmer@gmail.com>
-%%% @copyright (C) 2015, wanglihe
-%%% @doc
-%%%
-%%% @end
-%%% Created : 10 Jul 2015 by wanglihe <wanglihe.programmer@gmail.com>
-%%%-------------------------------------------------------------------
--module(core_dispatch).
+-module(status).
 
 -behaviour(gen_server).
 
 %% API
--export([start_link/1]).
+-export([start/0]).
 
 %% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-         terminate/2, code_change/3]).
+-export([init/1,
+         handle_call/3,
+         handle_cast/2,
+         handle_info/2,
+         terminate/2,
+         code_change/3]).
 
--include_lib("esip.hrl").
-
--define(SERVER, ?MODULE).
--define(CONFPORT, 5060).
--define(CLIENTPORT, 5061).
-
--record(state, { conf_port
-               , client_port
-               , server
-               , script
-               , callid
-               , rate
-               , timer}).
+-record(state, {}).
 
 %%%===================================================================
 %%% API
@@ -42,8 +26,8 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
-start_link(ScriptName) ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [ScriptName], []).
+start() ->
+    gen_server:start({local, ?MODULE}, ?MODULE, [], []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -60,22 +44,10 @@ start_link(ScriptName) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([ScriptName]) ->
-    status:start(),
-    esip:add_listener(5060, udp, []),
-    process_flag(trap_exit, true),
-    io:format("core dispatch started with: ~p~n", [ScriptName]),
-    case file:consult(ScriptName) of
-        {ok, Script} ->
-            [Server|RealScript] = Script,
-            gen_server:cast(self(), {start, {rate, 1}}), %%启动相关参数加在这里，
-                                                 %%如每秒新发，最大并发
-            {ok, #state{ server = Server
-                       , script = RealScript }};
-        {error, Reason} ->
-            io:format("load script get error ~p~n", [Reason]),
-            {stop, Reason}
-    end.
+init([]) ->
+    io:format("status init~n"),
+    timer:send_interval(1000, report_status),
+    {ok, #state{}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -105,13 +77,9 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_cast({start, {rate, N}}, State) ->
-    {ok, TRef} = timer:send_interval(1000, rate),
-    {noreply, State#state{ rate = N
-                         , timer = TRef}};
-
 handle_cast(Msg, State) ->
-    io:format("get cast ~p~n", [Msg]),
+    V = get(Msg),
+    put(Msg, addone(V)),
     {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -124,35 +92,13 @@ handle_cast(Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info({'EXIT', Pid, _}, State) ->
-    case erase(Pid) of
-        undefined ->
-            io:format("erase script ~p~n", [Pid]),
-            {noreply, State};
-        CallId ->
-            erase(CallId),
-            io:format("clean callid ~p~n", [CallId]),
-            {noreply, State}
-    end;
-
-handle_info(rate, State) ->
-    #state{ script = Script
-          , server = Server
-          , rate = N
-          , timer = TRef} = State,
-    timer:cancel(TRef),
-    lists:foreach(fun(_) ->
-        case execute_script:start_link(Script, Server) of
-            {ok, _Pid} ->
-                ok;
-            {error, _Reason} ->
-                ok
-        end
-        end, lists:seq(1,N)),
+handle_info(report_status, State) ->
+    {_, Dict} = process_info(self(), dictionary),
+    {ok, File} = file:open("/dev/shm/sixears.status", [write, binary]),
+    lists:foreach(fun({T,V}) -> io:format(File, "~p: ~p~n", [T, V]) end, Dict),
+    file:close(File),
     {noreply, State};
-
-handle_info(Info, State) ->
-    io:format("get info ~p~n", [Info]),
+handle_info(_Info, State) ->
     {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -183,3 +129,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+addone(undefined) -> 1;
+addone(N) -> N+1.

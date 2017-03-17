@@ -66,7 +66,7 @@ data_in(Data, #sip_socket{type = Transport,
     ?DEBUG(
        "SIP [~p/in] ~s:~p -> ~s:~p:~n~s~n~n",
        [Transport, inet_parse:ntoa(PeerIP), PeerPort,
-	inet_parse:ntoa(MyIP), MyPort, Data]).
+    inet_parse:ntoa(MyIP), MyPort, Data]).
 
 data_out(Data, #sip_socket{type = Transport,
                            addr = {MyIP, MyPort},
@@ -74,12 +74,16 @@ data_out(Data, #sip_socket{type = Transport,
     ?DEBUG(
        "SIP [~p/out] ~s:~p -> ~s:~p:~n~s~n~n",
        [Transport, inet_parse:ntoa(MyIP), MyPort,
-        inet_parse:ntoa(PeerIP), PeerPort, Data]).
+    inet_parse:ntoa(PeerIP), PeerPort, Data]).
 
-message_in(_, _) ->
+message_in(Msg, _) ->
+    #sip{method = Method} = Msg,
+    gen_server:cast(status, {in, Method}),
     ok.
 
-message_out(_, _) ->
+message_out(Msg, _) ->
+    #sip{method = Method} = Msg,
+    gen_server:cast(status, {out, Method}),
     ok.
 
 response(_Resp, _SIPSock) ->
