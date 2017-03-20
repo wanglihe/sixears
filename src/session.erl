@@ -77,13 +77,15 @@ data_out(Data, #sip_socket{type = Transport,
     inet_parse:ntoa(PeerIP), PeerPort, Data]).
 
 message_in(Msg, _) ->
-    #sip{method = Method} = Msg,
-    gen_server:cast(status, {in, Method}),
+    #sip{method = Method
+        , status = Status} = Msg,
+    gen_server:cast(status, {in, Method, Status}),
     ok.
 
 message_out(Msg, _) ->
-    #sip{method = Method} = Msg,
-    gen_server:cast(status, {out, Method}),
+    #sip{method = Method
+        , status = Status} = Msg,
+    gen_server:cast(status, {out, Method, Status}),
     ok.
 
 response(_Resp, _SIPSock) ->
