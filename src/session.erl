@@ -77,15 +77,17 @@ data_out(Data, #sip_socket{type = Transport,
     inet_parse:ntoa(PeerIP), PeerPort, Data]).
 
 message_in(Msg, _) ->
-    #sip{method = Method
+    #sip{ type = Type
+        , method = Method
         , status = Status} = Msg,
-    gen_server:cast(status, {in, Method, Status}),
+    gen_server:cast(status, {in, Type, Method, Status}),
     ok.
 
 message_out(Msg, _) ->
-    #sip{method = Method
+    #sip{ type = Type
+        , method = Method
         , status = Status} = Msg,
-    gen_server:cast(status, {out, Method, Status}),
+    gen_server:cast(status, {out, Type, Method, Status}),
     ok.
 
 response(_Resp, _SIPSock) ->
@@ -221,7 +223,13 @@ handle_cast(destroy, State) ->
 handle_cast({bye_200, Resp}, State) when State#state.step =:= wait_bye ->
     esip:close_dialog(esip:dialog_id(uac, Resp)),
     {noreply, State#state{step = wait_bye_1}};
+handle_cast({bye_500, Resp}, State) when State#state.step =:= wait_bye ->
+    esip:close_dialog(esip:dialog_id(uac, Resp)),
+    {noreply, State#state{step = wait_bye_1}};
 handle_cast({bye_200, Resp}, State) when State#state.step =:= wait_bye_1 ->
+    esip:close_dialog(esip:dialog_id(uac, Resp)),
+    {stop, normal, State};
+handle_cast({bye_500, Resp}, State) when State#state.step =:= wait_bye_1 ->
     esip:close_dialog(esip:dialog_id(uac, Resp)),
     {stop, normal, State};
 
@@ -570,6 +578,10 @@ dialog_transaction_user(#sip{type = response, status = S, method = <<"INVITE">>}
     ok;
 dialog_transaction_user(#sip{type = response, status = S, method = <<"BYE">>} = Resp,_,_,Pid) when S =:= 200->
     gen_server:cast(Pid, {bye_200, Resp}),
+    ok;
+%% bye 500 alse close dialog
+dialog_transaction_user(#sip{type = response, status = S, method = <<"BYE">>} = Resp,_,_,Pid) when S =:= 500->
+    gen_server:cast(Pid, {bye_500, Resp}),
     ok;
 dialog_transaction_user(#sip{type = response, status = S} = Resp,_,_,Pid) when S =:= 200->
     ok;
