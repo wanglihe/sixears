@@ -185,8 +185,8 @@ handle_cast({inv_200, ClientResp}, #state{step = wait_client_invite} = State) ->
 
     NConfReq = gen_ack({ConfHost, ConfPort}, ?CONFLOCAl, ConfResp, Sdp),
     esip:open_dialog(ConfReq, ConfResp, uac, {?MODULE, dialog_transaction_user,[{NConfReq}]}),
-    ConfAck = esip_dialog:prepare_request(esip:dialog_id(uac, NConfReq), NConfReq),
-    esip_transport:send(ConfSock, ConfAck),
+    %%ConfAck = esip_dialog:prepare_request(esip:dialog_id(uac, NConfReq), NConfReq),
+    esip_transport:send(ConfSock, NConfReq),
     io:format("sent conf ack~n"),
 
     #state{ client_inv = ClientReq
@@ -194,8 +194,8 @@ handle_cast({inv_200, ClientResp}, #state{step = wait_client_invite} = State) ->
     %%NClientReq = ClientResp#sip{type = request, method = <<"ACK">>, body = <<>>},
     NClientReq = gen_ack({ClientHost, ClientPort}, ?CLIENTLOCAL, ClientResp, <<>>),
     esip:open_dialog(ClientReq, ClientResp, uac, {?MODULE, dialog_transaction_user,[{NClientReq}]}),
-    ClientAck = esip_dialog:prepare_request(esip:dialog_id(uac, NClientReq), NClientReq),
-    esip_transport:send(ClientSock, ClientAck),
+    %%ClientAck = esip_dialog:prepare_request(esip:dialog_id(uac, NClientReq), NClientReq),
+    esip_transport:send(ClientSock, NClientReq),
     io:format("sent client ack~n"),
     gen_server:cast(State#state.script_pid, init_complete),
     {noreply, State#state{ client_inv200 = ClientResp
@@ -211,12 +211,12 @@ handle_cast(destroy, State) ->
           , client_sock = ClientSock} = State,
     {server, {conf, ConfHost, ConfPort}, {client, ClientHost, ClientPort}} = Server,
     ConfReq = gen_bye({ConfHost, ConfPort}, ?CONFLOCAl, ConfAck),
-    ConfBye = esip_dialog:prepare_request(esip:dialog_id(uac, ConfReq), ConfReq),
-    esip:request(ConfSock, ConfBye, {?MODULE, dialog_transaction_user, [self()]}),
+    %%ConfBye = esip_dialog:prepare_request(esip:dialog_id(uac, ConfReq), ConfReq),
+    esip:request(ConfSock, ConfReq, {?MODULE, dialog_transaction_user, [self()]}),
 
     ClientReq = gen_bye({ClientHost, ClientPort}, ?CONFLOCAl, ClientAck),
-    ClientBye = esip_dialog:prepare_request(esip:dialog_id(uac, ClientReq), ClientReq),
-    esip:request(ClientSock, ClientBye, {?MODULE, dialog_transaction_user, [self()]}),
+    %%ClientBye = esip_dialog:prepare_request(esip:dialog_id(uac, ClientReq), ClientReq),
+    esip:request(ClientSock, ClientReq, {?MODULE, dialog_transaction_user, [self()]}),
     {noreply, State#state{step = wait_bye}};
 
 handle_cast({bye_200, Resp}, State) when State#state.step =:= wait_bye ->
