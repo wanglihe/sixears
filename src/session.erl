@@ -156,6 +156,7 @@ handle_call(_Request, _From, State) ->
 handle_cast(self_start, State) ->
     #state{ server = Server
           , callid = CallId} = State,
+    gen_server:cast(status, session_start),
     {server, {conf, ConfHost, ConfPort}, _} = Server,
     SIPMsg = gen_invite({ConfHost, ConfPort}, ?CONFLOCAl, <<>>),
     {ok, SIPSock} = esip:connect(SIPMsg),
@@ -228,9 +229,11 @@ handle_cast({bye_500, Resp}, State) when State#state.step =:= wait_bye ->
     {noreply, State#state{step = wait_bye_1}};
 handle_cast({bye_200, Resp}, State) when State#state.step =:= wait_bye_1 ->
     esip:close_dialog(esip:dialog_id(uac, Resp)),
+    gen_server:cast(status, session_stop),
     {stop, normal, State};
 handle_cast({bye_500, Resp}, State) when State#state.step =:= wait_bye_1 ->
     esip:close_dialog(esip:dialog_id(uac, Resp)),
+    gen_server:cast(status, session_stop),
     {stop, normal, State};
 
 handle_cast({confserver, Comm}, State) ->

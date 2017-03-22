@@ -77,6 +77,17 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_cast(session_start, State) ->
+    Live = get(session_live),
+    put(session_live, addone(Live)),
+    Total = get(session_total),
+    put(session_live, addone(Total)),
+    {noreply, State};
+handle_cast(session_stop, State) ->
+    Live = get(session_live),
+    put(session_live, delone(Live)),
+    {noreply, State};
+
 handle_cast(Msg, State) ->
     V = get(Msg),
     put(Msg, addone(V)),
@@ -132,3 +143,4 @@ code_change(_OldVsn, State, _Extra) ->
 
 addone(undefined) -> 1;
 addone(N) -> N+1.
+delone(N) -> N-1.
