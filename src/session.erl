@@ -154,8 +154,7 @@ handle_call(_Request, _From, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_cast(self_start, State) ->
-    #state{ server = Server
-          , callid = CallId} = State,
+    #state{ server = Server} = State,
     gen_server:cast(status, session_start),
     {server, {conf, ConfHost, ConfPort}, _} = Server,
     SIPMsg = gen_invite({ConfHost, ConfPort}, ?CONFLOCAl, <<>>),
@@ -165,8 +164,7 @@ handle_cast(self_start, State) ->
                          , conf_inv = SIPMsg
                          , step = wait_conf_invite}};
 handle_cast({inv_200, Resp}, #state{step = wait_conf_invite} = State) ->
-    #state{ server = Server
-          , callid = CallId} = State,
+    #state{ server = Server} = State,
     {server, _, {client, ClientHost, ClientPort}} = Server,
     Sdp =  Resp#sip.body,
     SIPMsg = gen_invite({ClientHost, ClientPort}, ?CLIENTLOCAL, Sdp),
@@ -188,7 +186,7 @@ handle_cast({inv_200, ClientResp}, #state{step = wait_client_invite} = State) ->
     NConfReq = gen_ack({ConfHost, ConfPort}, ?CONFLOCAl, ConfResp, Sdp),
     esip:open_dialog(ConfReq, ConfResp, uac, {?MODULE, dialog_transaction_user,[{NConfReq}]}),
     ConfAck = esip_dialog:prepare_request(esip:dialog_id(uac, NConfReq), NConfReq),
-    esip_transport:send(ConfSock, NConfReq),
+    esip_transport:send(ConfSock, ConfAck),
     io:format("sent conf ack~n"),
 
     #state{ client_inv = ClientReq
@@ -197,7 +195,7 @@ handle_cast({inv_200, ClientResp}, #state{step = wait_client_invite} = State) ->
     NClientReq = gen_ack({ClientHost, ClientPort}, ?CLIENTLOCAL, ClientResp, <<>>),
     esip:open_dialog(ClientReq, ClientResp, uac, {?MODULE, dialog_transaction_user,[{NClientReq}]}),
     ClientAck = esip_dialog:prepare_request(esip:dialog_id(uac, NClientReq), NClientReq),
-    esip_transport:send(ClientSock, NClientReq),
+    esip_transport:send(ClientSock, ClientAck),
     io:format("sent client ack~n"),
     gen_server:cast(State#state.script_pid, init_complete),
     {noreply, State#state{ client_inv200 = ClientResp
@@ -214,11 +212,11 @@ handle_cast(destroy, State) ->
     {server, {conf, ConfHost, ConfPort}, {client, ClientHost, ClientPort}} = Server,
     ConfReq = gen_bye({ConfHost, ConfPort}, ?CONFLOCAl, ConfAck),
     ConfBye = esip_dialog:prepare_request(esip:dialog_id(uac, ConfReq), ConfReq),
-    esip:request(ConfSock, ConfReq, {?MODULE, dialog_transaction_user, [self()]}),
+    esip:request(ConfSock, ConfBye, {?MODULE, dialog_transaction_user, [self()]}),
 
     ClientReq = gen_bye({ClientHost, ClientPort}, ?CONFLOCAl, ClientAck),
     ClientBye = esip_dialog:prepare_request(esip:dialog_id(uac, ClientReq), ClientReq),
-    esip:request(ClientSock, ClientReq, {?MODULE, dialog_transaction_user, [self()]}),
+    esip:request(ClientSock, ClientBye, {?MODULE, dialog_transaction_user, [self()]}),
     {noreply, State#state{step = wait_bye}};
 
 handle_cast({bye_200, Resp}, State) when State#state.step =:= wait_bye ->
@@ -570,9 +568,9 @@ gen_msml(UnSupport) ->
     io:format("msml not gen for ~p~n", [UnSupport]),
     [].
 
-find_totag(#sip{hdrs = Headers}) ->
-    {_, _, ToParams} = esip:get_hdr('to', Headers),
-    esip:to_lower(esip:get_param(<<"tag">>, ToParams)).
+%%find_totag(#sip{hdrs = Headers}) ->
+%%    {_, _, ToParams} = esip:get_hdr('to', Headers),
+%%    esip:to_lower(esip:get_param(<<"tag">>, ToParams)).
 
 dialog_transaction_user(#sip{type = response, status = S},_,_,_) when S < 200->
     ok;
@@ -586,7 +584,7 @@ dialog_transaction_user(#sip{type = response, status = S, method = <<"BYE">>} = 
 dialog_transaction_user(#sip{type = response, status = S, method = <<"BYE">>} = Resp,_,_,Pid) when S =:= 500->
     gen_server:cast(Pid, {bye_500, Resp}),
     ok;
-dialog_transaction_user(#sip{type = response, status = S} = Resp,_,_,Pid) when S =:= 200->
+dialog_transaction_user(#sip{type = response, status = S} = _Resp,_,_,_Pid) when S =:= 200->
     ok;
 dialog_transaction_user(A,B,C,_) ->
     ?DEBUG("dialog_transaction_user: ~p~n~p~n~p~n~n", [A,B,C]).
