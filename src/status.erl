@@ -81,7 +81,7 @@ handle_cast(session_start, State) ->
     Live = get(session_live),
     put(session_live, addone(Live)),
     Total = get(session_total),
-    put(session_live, addone(Total)),
+    put(session_total, addone(Total)),
     {noreply, State};
 handle_cast(session_stop, State) ->
     Live = get(session_live),
