@@ -119,6 +119,7 @@ locate(_SIPMsg) ->
 %%--------------------------------------------------------------------
 init([ScriptPid, Server]) ->
     gen_server:cast(self(), self_start),
+    put(call_id, esip:make_callid()),
     {ok, #state{ server = Server
                , script_pid = ScriptPid}}.
 
@@ -319,7 +320,7 @@ gen_invite(ToHostPort, FromHostPort, Body) ->
         , uri = gen_uri("sip", "service", ToHostPort)
         , hdrs = [ {'cseq', 1}
                  , {'max-forwards', esip:get_config_value(max_forwards)}
-                 , {'call-id', esip:make_callid()}
+                 , {'call-id', get(call_id)}
                  , {via, [gen_via(FromHostPort)]}
                  , {from, {<<"sixears">>, gen_uri("sip", "sixears", FromHostPort),[{<<"tag">>, esip:make_tag()}]}}
                  , {to, {<<"service">>, gen_uri("sip", "service", ToHostPort), []}}
